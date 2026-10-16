@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 全屏：四角括号，表示展开到整个屏幕。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,9V4h5v2H6v3H4zM15,4h5v5h-2V6h-3V4zM20,15v5h-5v-2h3v-3h2zM4,15h2v3h3v2H4V15z" />
+</vector>

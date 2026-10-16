@@ -11,4 +11,12 @@
         <attr name="sidebarRadius" format="dimension"/>
         <attr name="sidebarBallRadius" format="dimension"/>
     </declare-styleable>
+
+    <!-- 数字输入滑条：只声明 seekStep（拖动步进，松手时把值吸附到它的整数倍）。
+         app:min / android:max 不在这里重复声明，它们由父类 SeekBarPreference 自己的 styleable 读取，
+         本控件直接拿 min / max 属性用。没有复用框架的 android:seekBarIncrement，
+         一是它在 compileSdk 32 的 xml 里过不了 AAPT，二是它只作用于方向键、不会吸附拖动。 -->
+    <declare-styleable name="NumericSeekBarPreference">
+        <attr name="seekStep" format="integer" />
+    </declare-styleable>
 </resources>

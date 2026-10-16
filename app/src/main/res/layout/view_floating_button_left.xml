@@ -5,12 +5,13 @@
     android:layout_width="@dimen/floating_button_width"
     android:layout_height="@dimen/floating_button_height">
 
+    <!-- 与 view_floating_button_right 同样不留外边距，保证 X 轴位置=0 时可见部分贴屏幕边缘。 -->
     <View
-        android:layout_width="3dp"
+        android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginStart="4dp"
         android:background="@drawable/bar_corners_bg"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 

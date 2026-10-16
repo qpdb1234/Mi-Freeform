@@ -6,15 +6,47 @@ plugins {
     id 'stringfog'
 }
 
+stringfog {
+    // 必要：加解密库的实现类路径，需和上面配置的加解密算法库一致。
+    implementation 'com.github.megatronking.stringfog.xor.StringFogImpl'
+    // 可选：加密开关，默认开启。
+    enable true
+    // 可选：指定需加密的代码包路径，可配置多个，未指定将默认全部加密。
+    fogPackages = ['com.moonlight.freeform']
+}
+
+// 签名材料从仓库根的 keystore.properties 读：这个文件不入库（.gitignore 已排除
+// keystore.properties 与 *.jks），所以公开仓库里不会再出现任何口令。
+// 没有这个文件时：debug 走 AGP 标准调试证书（CN=Android Debug），产物可正常安装；
+// release 不设 signingConfig，产出 app-release-unsigned.apk，由使用者自己换钥签名。
+// 这样别人克隆下来不带任何密钥也能构建，也不会拿上游名义的密钥发布包。
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+// 配置文件和 keystore 实体都在，才真的启用自定义签名
+def localSigningReady = keystorePropsFile.exists() &&
+        keystoreProps.getProperty('storeFile') &&
+        rootProject.file(keystoreProps.getProperty('storeFile')).exists()
+
 android {
     compileSdk 32
 
     defaultConfig {
-        applicationId "com.sunshine.freeform"
+        // 应用包名（applicationId）：com.mifreeform.freeform。
+        // Java/Kotlin 代码命名空间（namespace）仍为 com.moonlight.freeform
+        // （源码目录、R/BuildConfig、xposed_init 的类名、布局里的自定义 View
+        // 全类名都基于 namespace，保持不变可避免大范围改动）。
+        // 注意：无障碍等按 applicationId 匹配的地方（accessibility_config.xml
+        // 的 packageNames）需与本值保持一致。
+        applicationId "com.mifreeform.freeform"
         minSdk 27
         targetSdk 32
-        versionCode 2518
-        versionName "2.5.18"
+        // versionCode 必须随功能递增，否则和已安装的同包名旧版本
+        // versionCode 相同时，系统会认为「没有更新」而拒绝覆盖安装。
+        versionCode 2551
+        versionName "2.5.38"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -24,22 +56,42 @@ android {
         }
     }
 
-//    signingConfigs {
-//        release {
-//            storeFile file('D:\\code\\Android\\AndroidStudioProjects\\sunshinekey.jks')
-//            storePassword 'androidhas1'
-//            keyAlias = 'demo'
-//            keyPassword 'androidhas1'
-//        }
-//    }
+    signingConfigs {
+        // 注意：密钥一旦更换，设备上已有的旧包因签名不一致无法覆盖安装，需先卸载。
+        if (localSigningReady) {
+            release {
+                storeFile rootProject.file(keystoreProps.getProperty('storeFile'))
+                storePassword keystoreProps.getProperty('storePassword')
+                keyAlias keystoreProps.getProperty('keyAlias')
+                keyPassword keystoreProps.getProperty('keyPassword')
+            }
+            debug {
+                storeFile rootProject.file(keystoreProps.getProperty('storeFile'))
+                storePassword keystoreProps.getProperty('storePassword')
+                keyAlias keystoreProps.getProperty('keyAlias')
+                keyPassword keystoreProps.getProperty('keyPassword')
+            }
+        }
+    }
 
     buildTypes {
+        debug {
+            // 调试包额外带上 x86/x86_64，否则在 x86_64 模拟器上会 INSTALL_FAILED_NO_MATCHING_ABIS。
+            // buildTypes 里的 abiFilters 是与 defaultConfig 取并集，所以 release 仍然只打 arm。
+            ndk {
+                abiFilters 'x86', 'x86_64'
+            }
+        }
         release {
             zipAlignEnabled true
             shrinkResources true
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-//            signingConfig signingConfigs.release
+            // 有本地签名材料就用它；没有就留空（产出未签名 release 包），
+            // 而不是拿一个不存在的文件去签名，也不是拿上游名义的密钥。
+            if (localSigningReady) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     compileOptions {
@@ -91,8 +143,6 @@ dependencies {
 
     implementation 'io.github.biezhi:TinyPinyin:2.0.3.RELEASE'
 
-    implementation 'com.airbnb.android:lottie:5.2.0'
-
     implementation 'com.github.bumptech.glide:glide:4.13.2'
 
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:4.3'
@@ -100,13 +150,4 @@ dependencies {
     implementation 'com.tencent.bugly:crashreport:latest.release'
 
     implementation 'com.github.megatronking.stringfog:xor:3.0.0'
-}
-
-stringfog {
-    // 必要：加解密库的实现类路径，需和上面配置的加解密算法库一致。
-    implementation 'com.github.megatronking.stringfog.xor.StringFogImpl'
-    // 可选：加密开关，默认开启。
-    enable true
-    // 可选：指定需加密的代码包路径，可配置多个，未指定将默认全部加密。
-    fogPackages = ['com.sunshine.freeform']
 }

@@ -23,18 +23,6 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <com.airbnb.lottie.LottieAnimationView
-        android:id="@+id/lottieView"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/appBarLayout"
-        app:lottie_autoPlay="true"
-        app:lottie_loop="true"
-        app:lottie_rawRes="@raw/loading" />
-
     <rikka.widget.borderview.BorderRecyclerView
         android:id="@+id/recycler_apps"
         android:layout_width="match_parent"

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">米窗-全局小窗</string>
+    <string name="app_name">米窗</string>
     <string name="warn">提示</string>
     <string name="done">确定</string>
     <string name="cancel">取消</string>
@@ -22,39 +22,17 @@
 
     <!--fragment_home.xml-->
     <string name="settings">设置</string>
-    <string name="feedback">问题反馈</string>
-    <string name="donate">捐赠</string>
-    <string name="rate">打个分吧</string>
-    <string name="coolapk_my_name">酷安关注我 @KindBrave</string>
-    <string name="add_qq_group">加入QQ交流1群</string>
-    <string name="add_qq_group2">加入QQ交流2群</string>
-    <string name="add_qq_channel">加入QQ频道/反馈</string>
-    <string name="add_telegram">Telegram交流群</string>
-    <string name="open_source">Github</string>
-    <string name="accessibility_no_start_home">点击申请无障碍权限</string>
-    <string name="donate_message">米窗无需强制付费即可体验，但维护米窗耗费了开发者大量精力。捐赠可以让开发者更有动力地维护下去</string>
-    <string name="exchange">交流与反馈</string>
-    <string name="guide_help">帮助</string>
-    <string name="guide">功能引导</string>
-    <string name="question">常见问题</string>
-    <string name="open_api">开放API</string>
-
+    <string name="feedback">问题反馈</string>    <string name="accessibility_no_start_home">点击申请无障碍权限</string>    <string name="guide">功能引导</string>
     <!--HomeFragment-->
     <string name="try_to_init_shizuku">正在尝试激活Shizuku服务…</string>
-    <string name="try_to_init_xposed">拥有Xposed后并不能帮助米窗开启小窗，但米窗拥有Xposed后可以阻止应用从小窗中跳出为全屏。使用Xposed，需要您去Xposed管理应用（如Lsposed）中为米窗勾选”系统框架“并重启设备</string>
+    <string name="try_to_init_xposed">拥有Xposed后并不能帮助米窗开启小窗，但米窗拥有Xposed后可以阻止应用从小窗中跳出为全屏。使用Xposed，需要您去Xposed管理应用（如Lsposed）中为米窗勾选“系统框架”并重启设备</string>
     <string name="sui_service_description">你已经可以体验米窗服务</string>
-    <string name="no_service_description">Xposed和Sui/Shizuku服务都没有启动</string>
-    <string name="start_market_fail">打开应用商店失败</string>
-    <string name="start_coolapk_fail">打开酷安失败</string>
-    <string name="start_qq_fail">打开QQ失败</string>
-    <string name="sui_start_short">Sui已激活</string>
+    <string name="no_service_description">Xposed和Sui/Shizuku服务都没有启动</string>    <string name="sui_start_short">Sui已激活</string>
     <string name="shizuku_start_short">Shizuku已激活</string>
     <string name="xposed_start_short">Xposed存在</string>
-    <string name="home_accessibility_warn_message">当前保活模式为无障碍服务，所以需要开启无障碍服务才可以正常运行。如果在你的设备上无障碍服务有问题或者你不想使用无障碍模式，可以去设置中切换保活模式</string>
+    <string name="home_accessibility_warn_message">无障碍服务只是米窗可选的一种保活方式：只有当你选择用无障碍服务保活时才需要开启它，否则米窗可能无法在后台存活。如果你的设备上无障碍服务有问题，或你想改用兼容性更好的前台服务保活，可以去设置中切换保活服务类型</string>
     <string name="go_to_start_accessibility">开启无障碍</string>
     <string name="go_to_change_service_type">去切换保活服务类型</string>
-    <string name="donate_wechat_title">保存截图在微信扫码就可以啦</string>
-
     <!--accessibility_config.xml-->
     <string name="accessibility_desc">米窗保活服务。该服务可以保证米窗的后台存活。米窗不会通过该服务收集任何信息。</string>
 
@@ -97,42 +75,43 @@
 
     <!--settings-->
     <string name="category_base">基本设置</string>
+    <string name="category_backup_restore">备份与恢复</string>
     <string name="switch_hide_recent">从最近任务隐藏</string>
-    <string name="switch_hide_recent_summary">在米窗中从多任务隐藏。划掉米窗再重新进入即可生效</string>
+    <string name="switch_hide_recent_summary">仅在最近任务中隐藏米窗自身卡片，不影响小窗内的应用。开关后立即生效，设置页会重新打开一次</string>
     <string name="service_type_title">保活服务类型</string>
-    <string name="service_type_summary">默认为无障碍。如果无障碍在你的设备上有问题，可以选择前台通知。切换到前台通知时，请确保无障碍处于关闭状态。如果无障碍在你的设备上运行正常，请不要选择前台通知</string>
-    <string name="preference_reset_overlay_setting">重置叠加层位置与大小</string>
-    <string name="preference_reset_overlay_setting_summary">重置包括记录的小窗位置和大小、侧边栏的位置。可用于以上两者跳出屏外或尺寸异常而无法控制的问题</string>
+    <string name="service_type_summary">前台服务通过常驻通知保活，无需开启无障碍、兼容性最好；无障碍服务后台保活更强。一次只用一种，切换时米窗会自动处理前台服务，无障碍服务则需你在系统设置里开关</string>
+    <string name="app_language_title">语言</string>
+    <string name="app_language_summary">仅切换本应用界面语言，不影响系统语言，选择后立即生效。当前：%1$s</string>
+    <string name="preference_reset_overlay_setting">重置小窗与侧边栏的位置和大小</string>
+    <string name="preference_reset_overlay_setting_summary">重置记录的小窗位置与大小、侧边栏位置。用于它们移出屏外或尺寸异常而无法操作时</string>
     <string name="compatible_title">兼容模式启动小窗（实验性）</string>
     <string name="compatible_summary">使用兼容模式启动小窗，该模式可以解决小窗内软件通知、全屏后等界面尺寸异常的问题。兼容模式小窗界面缩放比例下一版本支持。</string>
-    <string name="preference_start_by_recent_view_title">在多任务打开</string>
-    <string name="preference_start_by_recent_view_summary">如何在多任务界面打开米窗？在Xposed管理器中勾选桌面后，长按位于多任务界面的应用图标即可。该功能只支持类Launcher3桌面</string>
+    <string name="preference_start_by_recent_view_title">如何从多任务打开</string>
+    <string name="preference_start_by_recent_view_summary">在 Xposed 管理器中勾选桌面后，长按多任务界面的应用图标即可用米窗打开。仅支持类 Launcher3 桌面</string>
 
     <string name="category_freeform">小窗设置</string>
     <string name="setting_freeform_dpi_title">小窗内界面缩放-竖屏</string>
     <string name="setting_freeform_landscape_dpi_title">小窗内界面缩放-横屏</string>
+    <string name="freeform_scale_summary">调整小窗内应用的界面缩放，范围 -500~500，0 为默认。数值越大界面元素越小、显示内容越多</string>
     <string name="remember_position_title">记住小窗位置与大小</string>
     <string name="remember_position_summary">记住上次关闭小窗时的位置与大小</string>
-    <string name="change_dpi_title">在屏幕旋转时修改小窗缩放比例（实验性）</string>
-    <string name="change_dpi_summary">若未开启该选项，上述分别设置的小窗内界面缩放比例仅会在小窗首次启动时生效。开启该选项后，屏幕旋转时则会尝试改变缩放比例以达到上述设置的效果，但是部分应用会重新刷新内容。更严重地，在某些设备上可能会产生界面异常</string>
-    <string name="use_sui_refuse_to_fullscreen_title">使用Shizuku/Sui阻止应用跳出小窗到全屏(实验性)</string>
-    <string name="use_sui_refuse_to_fullscreen_summary">暂时只支持Android 12+。该功能建议仅在没有Xposed或者Xposed阻止失败时启用。尝试使用Shizuku/Sui阻止小窗内的应用从小窗跳出到全屏。该功能仍在测试中，不保证阻止成功，并且会导致屏幕闪烁、卡顿等问题</string>
-    <string name="manual_adjust_freeform_rotation_title">手动调整小窗方向（实验性）</string>
-    <string name="manual_adjust_freeform_rotation_summary">开启后，允许通过双击底栏中部按钮来手动旋转小窗方向。因为设备的多样性，该功能未必达到预期，请理性看待</string>
-    <string name="auto_scale_title">自由缩放小窗（测试）</string>
-    <string name="auto_scale_summary">可按照自由比例缩放小窗</string>
+    <string name="change_dpi_title">在屏幕旋转时调整小窗缩放比例</string>
+    <string name="change_dpi_summary">关闭时上面的界面缩放只在小窗首次启动生效；开启后屏幕旋转时会重新应用缩放，让小窗保持设定大小，但部分应用会刷新内容</string>
+    <string name="use_sui_refuse_to_fullscreen_title">使用Shizuku/Sui阻止应用跳出小窗到全屏</string>
+    <string name="use_sui_refuse_to_fullscreen_summary">需要 Android 12+ 与 Shizuku/Sui。当小窗内应用跳出到全屏时，米窗会把它拉回小窗而非留下空白窗口。建议在没有 Xposed 或 Xposed 拦截失败时开启</string>
 
     <string name="category_floating">侧边栏</string>
     <string name="switch_floating">全局侧边栏</string>
-    <string name="switch_floating_summary">通过侧边栏打开小窗应用</string>
+    <string name="switch_floating_summary">开启后可在任意应用界面从屏幕边缘划出侧边栏，用它启动小窗或恢复已收起的小窗</string>
     <string name="menu_floating_position">侧边栏位置</string>
     <string name="preference_quick_floating_app">快捷应用</string>
     <string name="preference_quick_floating_app_summary">选择在侧边栏中展示的可以快速启动小窗的应用</string>
     <string name="floating_alpha_title">侧边栏透明度</string>
+    <string name="floating_alpha_summary">数值越大，侧边栏越透明</string>
 
     <string name="category_notify">通知</string>
     <string name="switch_notify_freeform">接管选定应用通知</string>
-    <string name="switch_notify_freeform_summary">在选定应用发送通知时，米窗会拦截并且发送一个相同内容的通知，但可以通过米窗开启该应用</string>
+    <string name="switch_notify_freeform_summary">选定应用发通知时，米窗会移除原通知并发一条内容相同、可用米窗打开该应用的通知来替代（不可清除的通知不接管）</string>
     <string name="preference_notification_apps_summary">选择需要接管的应用</string>
     <string name="preference_notification_apps">接管通知应用</string>
 
@@ -154,8 +133,6 @@
     <string name="reset_success">重置成功，部分设置重启米窗后生效</string>
     <string name="require_start_accessibility">请开启无障碍服务后再试</string>
     <string name="require_stop_accessibility">请关闭无障碍服务后再试</string>
-    <string name="freeform_dpi_dialog_title">输入缩放值</string>
-    <string name="to_default">恢复默认</string>
 
     <!--QuickStartTileService-->
     <string name="choose_freeform_app">选择小窗应用</string>
@@ -188,16 +165,6 @@
     <!--fragment_second-->
     <string name="have_done">完成</string>
 
-    <!--DonationActivity-->
-    <string name="donation_label">捐赠</string>
-    <string name="open_alipay_fail">开启支付宝失败</string>
-
-    <!--activity_donation.xml-->
-    <string name="senior_info">米窗始终坚持免费使用的承诺，但是为了后续开发更多好玩实用的功能，还需要您的支持。如果您有兴趣帮助米窗，可以选择酷安给我五星好评、捐赠开发者。支付宝捐赠可以点击下方按钮进行跳转，微信捐赠暂不支持跳转，您可以截图保存后通过扫码的方式捐赠，感激不尽。无论您捐赠与否，米窗提供的功能都将保持一致，感谢您的支持。</string>
-    <string name="alipay">支付宝捐赠</string>
-    <string name="pay_list">捐赠名单</string>
-    <string name="so_sad">捐什么捐，我要白嫖！</string>
-    <string name="wechat">下方微信赞赏码截图就可以啦</string>
 
     <!--ChooseAppFloatingAdapter-->
     <string name="fenshen">分身</string>
@@ -212,11 +179,6 @@
     <string name="foreground_notification_title">米窗正在后台运行</string>
     <string name="foreground_notification_text">点击可打开侧边栏</string>
 
-    <!--bottom_nav_menu-->
-    <string name="home">首页</string>
-
-    <!--view_edit-->
-    <string name="input_freeform_dpi">范围-500~500</string>
 
     <!--RecentActivity-->
     <string name="recent_label">正在运行的小窗</string>
@@ -225,4 +187,65 @@
 
     <!--task_view_menu_option-->
     <string name="recent_open_by_freeform">使用米窗打开</string>
+
+
+    <string name="top_bar_close">关闭</string>
+    <string name="top_bar_full_screen">全屏</string>
+    <string name="top_bar_minimize">最小化</string>
+
+    <!-- 顶栏三个图标可自定义动作 -->
+    <string name="top_bar_slot1">顶栏第一个按钮的动作</string>
+    <string name="top_bar_slot2">顶栏第二个按钮的动作</string>
+    <string name="top_bar_slot3">顶栏第三个按钮的动作</string>
+    <string name="top_bar_category">自定义顶栏按钮</string>
+    <string name="top_action_back">返回</string>
+    <string name="top_action_screenshot">截屏</string>
+    <string name="top_action_rotate">旋转小窗</string>
+    <string name="top_action_center">移到屏幕中心</string>
+    <string name="top_action_none">无</string>
+    <string name="bottom_double_tap_title">双击底栏中部按钮</string>
+    <string name="screenshot_saved">截屏已保存</string>
+    <string name="screenshot_failed">截屏失败</string>
+
+    <!-- 收起方式 -->
+    <string name="minimize_mode_title">收起方式</string>
+    <string name="minimize_mode_sidebar">收到侧边栏</string>
+    <string name="minimize_mode_ball">变成悬浮球</string>
+    <string name="miniball_size">悬浮球大小</string>
+    <string name="miniball_alpha">悬浮球透明度</string>
+    <string name="miniball_alpha_summary">数值越大，悬浮球越透明</string>
+
+    <!-- 备份设置 -->
+    <string name="backup_settings">备份设置</string>
+    <string name="restore_settings">恢复设置</string>
+    <string name="backup_settings_summary">导出全部设置到文件</string>
+    <string name="restore_settings_summary">从备份文件导入设置</string>
+    <string name="backup_success">设置已导出</string>
+    <string name="backup_failed">导出失败</string>
+    <string name="restore_success">设置已恢复</string>
+    <string name="restore_failed">恢复失败，备份文件无效</string>
+    <string name="freeform_dot_scale_mode_title">底栏两个圆点拖动缩放</string>
+    <string name="freeform_dot_scale_mode_summary">选择拖动底栏两个圆点时的缩放方式：等比例锁定宽高比，自由缩放可分别改变宽高</string>
+    <string name="freeform_corner_scale_mode_title">左下角与右下角拖动缩放</string>
+    <string name="freeform_corner_scale_mode_summary">选择拖动左下角、右下角时的缩放方式：等比例锁定宽高比，自由缩放可分别改变宽高</string>
+    <string name="shizuku_card_title">关于 Shizuku / Sui</string>
+    <string name="shizuku_card_message_running">Shizuku 与 Sui 都能让米窗调用系统底层接口（Shizuku 可在不获取 Root 的情况下通过无线调试激活，Sui 则需要 Root），是米窗开启小窗核心功能所依赖的服务：在虚拟屏中启动应用、向小窗注入触控、把跳出的应用拉回小窗等都需要它们，二者激活任意一个即可。\n\n当前状态：Shizuku / Sui 已激活，米窗可正常创建小窗。</string>
+    <string name="shizuku_card_message_not_running">Shizuku 与 Sui 都能让米窗调用系统底层接口（Shizuku 可在不获取 Root 的情况下通过无线调试激活，Sui 则需要 Root），是米窗开启小窗核心功能所依赖的服务：在虚拟屏中启动应用、向小窗注入触控、把跳出的应用拉回小窗等都需要它们，二者激活任意一个即可：Shizuku 需安装 Shizuku App，并按其指引通过无线调试或 Root 完成激活；Sui 需在 Magisk 中安装并启用 Sui 模块。\n\n当前状态：尚未检测到已激活的 Shizuku / Sui，请按上面的方法完成激活后，再次点击本卡片重试。</string>
+    <string name="sidebar_length_title">侧边栏长度</string>
+    <string name="sidebar_width_title">侧边栏宽度</string>
+    <string name="sidebar_pos_x_title">侧边栏X轴位置</string>
+    <string name="sidebar_pos_x_summary">侧边栏沿停靠边向屏幕内缩进的距离。锁定后不可调节</string>
+    <string name="sidebar_lock_x_title">锁定侧边栏X轴位置</string>
+    <string name="sidebar_lock_x_summary">锁定后不能调节X轴位置，也不能左右拖动侧边栏（默认锁定）</string>
+    <string name="sidebar_pos_y_title">侧边栏Y轴位置</string>
+    <string name="sidebar_pos_y_summary">侧边栏相对屏幕竖向中心的偏移。锁定后不可调节</string>
+    <string name="sidebar_lock_y_title">锁定侧边栏Y轴位置</string>
+    <string name="sidebar_lock_y_summary">锁定后不能调节Y轴位置，也不能上下拖动侧边栏</string>
+    <string name="reset_all_settings">恢复默认设置</string>
+    <string name="reset_all_settings_summary">将本页所有设置恢复为默认值（不影响快捷应用与通知接管应用列表）</string>
+    <string name="reset_all_settings_confirm">确定要把所有设置恢复为默认值吗？此操作会清除你自定义的全部参数</string>
+    <string name="reset_all_success">已恢复默认设置</string>
+    <!-- 顶部三张状态卡片点开后的介绍标题（描述文字复用 xposed_permission_intro / home_accessibility_warn_message / shizuku_card_message_*） -->
+    <string name="xposed_card_title">关于 Xposed</string>
+    <string name="accessibility_card_title">关于无障碍服务</string>
 </resources>

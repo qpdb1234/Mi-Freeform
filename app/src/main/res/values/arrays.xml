@@ -18,12 +18,71 @@
         <item>1</item>
     </integer-array>
 
+    <!-- 顶栏按钮可选动作；顺序必须与 TopBarAction 枚举的 id 一致 -->
+    <string-array name="top_bar_action">
+        <item>Close</item>
+        <item>Full screen</item>
+        <item>Minimize</item>
+        <item>Back</item>
+        <item>Screenshot</item>
+        <item>Rotate window</item>
+        <item>Move to center</item>
+        <item>None</item>
+    </string-array>
+
+    <integer-array name="top_bar_action_value">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+        <item>5</item>
+        <item>6</item>
+        <item>7</item>
+    </integer-array>
+
+    <!-- 收起方式：0=侧边栏，1=悬浮球。顺序与 FreeformView.MINIMIZE_MODE_* 一致 -->
+    <string-array name="minimize_mode">
+        <item>Sidebar</item>
+        <item>Floating ball</item>
+    </string-array>
+
+    <integer-array name="minimize_mode_value">
+        <item>0</item>
+        <item>1</item>
+    </integer-array>
+
     <string-array name="service_type">
         <item>Accessibility service</item>
         <item>Foreground service</item>
     </string-array>
 
     <integer-array name="service_type_value">
+        <item>0</item>
+        <item>1</item>
+    </integer-array>
+
+    <!-- 应用内语言：0=跟随系统 1=简体中文 2=English，须与 LocaleHelper.LANGUAGE_* 一致；
+         「简体中文 / English」按惯例在各语言下都用自己的语言书写，不翻译 -->
+    <string-array name="app_language">
+        <item>Follow system</item>
+        <item>简体中文</item>
+        <item>English</item>
+    </string-array>
+
+    <integer-array name="app_language_value">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </integer-array>
+
+    <!-- 拖动缩放方式：0=等比例，1=自由。顺序与 FreeformView.SCALE_MODE_* 一致 -->
+    <string-array name="freeform_scale_mode">
+        <item>Proportional</item>
+        <item>Free</item>
+    </string-array>
+
+    <integer-array name="freeform_scale_mode_value">
         <item>0</item>
         <item>1</item>
     </integer-array>
@@ -56,4 +115,5 @@
         <item>Y</item>
         <item>Z</item>
     </array>
+
 </resources>

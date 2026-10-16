@@ -1,5 +1,27 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
+
+    <!-- 顶栏按钮可选动作；顺序必须与 TopBarAction 枚举的 id 一致 -->
+    <string-array name="top_bar_action">
+        <item>关闭</item>
+        <item>全屏</item>
+        <item>收起</item>
+        <item>返回</item>
+        <item>截屏</item>
+        <item>旋转小窗</item>
+        <item>移到屏幕中心</item>
+        <item>无</item>
+    </string-array>
+
+    <integer-array name="top_bar_action_value">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+        <item>5</item>
+        <item>6</item>
+        <item>7</item>
+    </integer-array>
     <string-array name="floating_show_position">
         <item>屏幕左侧</item>
         <item>屏幕右侧</item>
@@ -8,6 +30,19 @@
     <string-array name="service_type">
         <item>使用无障碍</item>
         <item>使用前台服务</item>
+    </string-array>
+
+    <!-- 应用内语言：顺序与 values/arrays.xml 的 app_language 一致 -->
+    <string-array name="app_language">
+        <item>跟随系统</item>
+        <item>简体中文</item>
+        <item>English</item>
+    </string-array>
+
+    <!-- 拖动缩放方式：0=等比例，1=自由 -->
+    <string-array name="freeform_scale_mode">
+        <item>等比例缩放</item>
+        <item>自由缩放</item>
     </string-array>
 
     <array name="waveSideBarLetters">
@@ -38,4 +73,16 @@
         <item>Y</item>
         <item>Z</item>
     </array>
+
+    <!-- 收起方式：0=侧边栏，1=悬浮球 -->
+    <string-array name="minimize_mode">
+        <item>收起到侧边栏</item>
+        <item>变成悬浮球</item>
+    </string-array>
+
+    <integer-array name="minimize_mode_value">
+        <item>0</item>
+        <item>1</item>
+    </integer-array>
+
 </resources>

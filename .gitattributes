@@ -1,0 +1,27 @@
+# 行尾规范：仓库内一律存 LF，避免 gradlew 在 Linux/macOS 上因 CRLF 而无法执行
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+
+# 源码与文本
+*.kt text eol=lf
+*.kts text eol=lf
+*.java text eol=lf
+*.xml text eol=lf
+*.aidl text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.pro text eol=lf
+*.properties text eol=lf
+
+# 二进制：绝不做行尾转换
+*.png binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.jar binary
+*.aar binary
+*.apk binary
+*.jks binary
+*.keystore binary

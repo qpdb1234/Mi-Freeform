@@ -1,4 +1,4 @@
-com.sunshine.freeform.hook.HookFramework
-com.sunshine.freeform.hook.HookSystemUI
-com.sunshine.freeform.hook.HookMyself
-com.sunshine.freeform.hook.HookLauncher
+com.moonlight.freeform.hook.HookFramework
+com.moonlight.freeform.hook.HookSystemUI
+com.moonlight.freeform.hook.HookMyself
+com.moonlight.freeform.hook.HookLauncher

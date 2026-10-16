@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  事件过滤只监听本应用自身。
+  这里必须与 applicationId 一致；改包名时记得同步修改本项，
+  否则无障碍服务收不到本应用的事件。
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeAllMask"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_desc"
-    android:packageNames="com.sunshine.freeform"
+    android:packageNames="com.mifreeform.freeform"
     android:notificationTimeout="100" />

@@ -35,21 +35,12 @@
                 app:layout_constraintTop_toBottomOf="@+id/topBar">
             </TextureView>
 
-            <com.airbnb.lottie.LottieAnimationView
-                android:id="@+id/lottieView"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                app:layout_constraintBottom_toTopOf="@+id/bottomBar"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
-                app:lottie_autoPlay="true"
-                app:lottie_loop="true"
-                app:lottie_rawRes="@raw/loading" />
+            <!-- 小窗的开屏 loading 已删除（原本是一个 lottie 动画，靠首帧淡入淡出），
+                 画面直接由下面的 TextureView 显示。 -->
 
             <include
                 android:id="@+id/topBar"
-                layout="@layout/view_bar"
+                layout="@layout/view_top_bar"
                 android:layout_width="0dp"
                 android:layout_height="@dimen/top_bar_height"
                 app:layout_constraintEnd_toEndOf="parent"

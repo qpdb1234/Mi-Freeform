@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  设置页顶部的三张状态卡片（Xposed / Shizuku / 无障碍）。
+  由 SettingFragment 在 onCreateRecyclerView 时动态 inflate，逐条插入。
+  高度按 listPreferredItemHeight（与下方 Preference 条目一致）+ 内边距计算，
+  保证与设置条目视觉等高。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/status_cards_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical" />

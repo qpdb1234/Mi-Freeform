@@ -3,6 +3,20 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <PreferenceCategory
+        android:title="@string/category_backup_restore"
+        app:iconSpaceReserved="false">
+
+        <Preference
+            android:key="backup_settings"
+            app:title="@string/backup_settings"
+            app:iconSpaceReserved="false"/>
+        <Preference
+            android:key="restore_settings"
+            app:title="@string/restore_settings"
+            app:iconSpaceReserved="false"/>
+    </PreferenceCategory>
+
+    <PreferenceCategory
         android:title="@string/category_base"
         app:iconSpaceReserved="false">
         <SwitchPreference
@@ -10,17 +24,33 @@
             android:title="@string/switch_hide_recent"
             android:summary="@string/switch_hide_recent_summary"
             app:iconSpaceReserved="false"/>
-        <com.sunshine.freeform.ui.view.IntegerSimpleMenuPreference
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
             app:entries="@array/service_type"
             app:entryValues="@array/service_type_value"
             android:key="service_type"
             android:title="@string/service_type_title"
             android:summary="@string/service_type_summary"
+            android:defaultValue="1"
+            app:iconSpaceReserved="false"/>
+        <!-- 应用内语言切换：0=跟随系统 1=简体中文 2=English，值域与 LocaleHelper.LANGUAGE_* 对应。
+             生效方式见 SettingFragment.onPreferenceChange 的 APP_LANGUAGE 分支。 -->
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
+            app:entries="@array/app_language"
+            app:entryValues="@array/app_language_value"
+            android:key="app_language"
+            android:title="@string/app_language_title"
+            android:summary="@string/app_language_summary"
+            android:defaultValue="0"
             app:iconSpaceReserved="false"/>
         <Preference
             android:key="reset_overlay_setting"
             app:title="@string/preference_reset_overlay_setting"
             android:summary="@string/preference_reset_overlay_setting_summary"
+            app:iconSpaceReserved="false"/>
+        <Preference
+            android:key="reset_all_settings"
+            app:title="@string/reset_all_settings"
+            android:summary="@string/reset_all_settings_summary"
             app:iconSpaceReserved="false"/>
         <Preference
             android:title="@string/preference_start_by_recent_view_title"
@@ -31,19 +61,21 @@
         android:title="@string/category_freeform"
         app:iconSpaceReserved="false">
 
-        <SeekBarPreference
+        <com.moonlight.freeform.ui.view.NumericSeekBarPreference
             android:key="freeform_scale_portrait"
             android:title="@string/setting_freeform_dpi_title"
+            android:summary="@string/freeform_scale_summary"
             app:iconSpaceReserved="false"
-            app:defaultValue="0"
+            android:defaultValue="0"
             app:min="-500"
             android:max="500"
             app:showSeekBarValue="true"/>
-        <SeekBarPreference
+        <com.moonlight.freeform.ui.view.NumericSeekBarPreference
             android:key="freeform_scale_landscape"
             android:title="@string/setting_freeform_landscape_dpi_title"
+            android:summary="@string/freeform_scale_summary"
             app:iconSpaceReserved="false"
-            app:defaultValue="0"
+            android:defaultValue="0"
             app:min="-500"
             android:max="500"
             app:showSeekBarValue="true" />
@@ -51,7 +83,6 @@
         <SwitchPreference
             android:key="remember_freeform_position"
             android:title="@string/remember_position_title"
-            android:summary="@string/remember_position_summary"
             app:iconSpaceReserved="false"/>
 
         <SwitchPreference
@@ -66,16 +97,57 @@
             android:summary="@string/use_sui_refuse_to_fullscreen_summary"
             app:iconSpaceReserved="false"/>
 
-        <SwitchPreference
-            android:key="manual_adjust_freeform_rotation"
-            android:title="@string/manual_adjust_freeform_rotation_title"
-            android:summary="@string/manual_adjust_freeform_rotation_summary"
+        <!-- 拖动缩放方式：底栏两个圆点 与 左/右下角，各自可选等比例/自由 -->
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
+            app:entries="@array/freeform_scale_mode"
+            app:entryValues="@array/freeform_scale_mode_value"
+            android:key="freeform_dot_scale_mode"
+            android:title="@string/freeform_dot_scale_mode_title"
+            android:summary="@string/freeform_dot_scale_mode_summary"
+            android:defaultValue="1"
             app:iconSpaceReserved="false"/>
 
-        <SwitchPreference
-            android:key="auto_scale"
-            android:title="@string/auto_scale_title"
-            android:summary="@string/auto_scale_summary"
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
+            app:entries="@array/freeform_scale_mode"
+            app:entryValues="@array/freeform_scale_mode_value"
+            android:key="freeform_corner_scale_mode"
+            android:title="@string/freeform_corner_scale_mode_title"
+            android:summary="@string/freeform_corner_scale_mode_summary"
+            android:defaultValue="0"
+            app:iconSpaceReserved="false"/>
+
+        <!-- 顶栏三个图标可自定义动作。运行时用 TopBarAction.getSlotActionFromSp 从 app_settings 按同名 key 读取。 -->
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
+            app:entries="@array/top_bar_action"
+            app:entryValues="@array/top_bar_action_value"
+            android:key="top_bar_slot0"
+            android:title="@string/top_bar_slot1"
+            android:defaultValue="0"
+            app:iconSpaceReserved="false"/>
+
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
+            app:entries="@array/top_bar_action"
+            app:entryValues="@array/top_bar_action_value"
+            android:key="top_bar_slot1"
+            android:title="@string/top_bar_slot2"
+            android:defaultValue="1"
+            app:iconSpaceReserved="false"/>
+
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
+            app:entries="@array/top_bar_action"
+            app:entryValues="@array/top_bar_action_value"
+            android:key="top_bar_slot2"
+            android:title="@string/top_bar_slot3"
+            android:defaultValue="2"
+            app:iconSpaceReserved="false"/>
+
+        <!-- 双击底栏中部按钮的动作，与顶栏三个按钮共用可选动作。 -->
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
+            app:entries="@array/top_bar_action"
+            app:entryValues="@array/top_bar_action_value"
+            android:key="bottom_double_tap_action"
+            android:title="@string/bottom_double_tap_title"
+            android:defaultValue="5"
             app:iconSpaceReserved="false"/>
 
 <!--        <SwitchPreference-->
@@ -92,14 +164,100 @@
             android:key="show_floating"
             android:title="@string/switch_floating"
             android:summary="@string/switch_floating_summary"
+            android:defaultValue="true"
             app:iconSpaceReserved="false"/>
 
-        <com.sunshine.freeform.ui.view.IntegerSimpleMenuPreference
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
             app:entries="@array/floating_show_position"
             app:entryValues="@array/floating_show_position_value"
             android:key="floating_position_x"
             android:title="@string/menu_floating_position"
+            android:defaultValue="1"
             app:iconSpaceReserved="false"/>
+
+        <!-- 侧边栏几何：长度/宽度、X/Y 位置，以及 X/Y 轴锁定（默认锁定 X 轴）。
+             宽度默认 8dp：贴着屏幕边的细胶囊，去掉外边距后这里的值就是可见宽度。 -->
+        <com.moonlight.freeform.ui.view.NumericSeekBarPreference
+            android:key="sidebar_length_dp"
+            android:title="@string/sidebar_length_title"
+            app:iconSpaceReserved="false"
+            android:defaultValue="64"
+            app:min="0"
+            android:max="480"
+            app:showSeekBarValue="true"/>
+        <com.moonlight.freeform.ui.view.NumericSeekBarPreference
+            android:key="sidebar_width_dp"
+            android:title="@string/sidebar_width_title"
+            app:iconSpaceReserved="false"
+            android:defaultValue="8"
+            app:min="0"
+            android:max="80"
+            app:showSeekBarValue="true"/>
+        <!-- 两个位置滑条的 app:min / android:max 只是 XML 兜底值：SettingFragment 会按当前屏幕
+             方向和把手宽高重算区间（X 上限 (屏宽-把手宽)/2，Y 上限 (屏高-把手长)/2），
+             所以这里写得比哪台机器的实际值都大也不会留下拖了没反应的死档。 -->
+        <com.moonlight.freeform.ui.view.NumericSeekBarPreference
+            android:key="sidebar_pos_x_dp"
+            android:title="@string/sidebar_pos_x_title"
+            android:summary="@string/sidebar_pos_x_summary"
+            app:iconSpaceReserved="false"
+            android:defaultValue="0"
+            app:min="0"
+            android:max="240"
+            app:showSeekBarValue="true"/>
+        <SwitchPreference
+            android:key="sidebar_lock_x"
+            android:title="@string/sidebar_lock_x_title"
+            android:summary="@string/sidebar_lock_x_summary"
+            android:defaultValue="true"
+            app:iconSpaceReserved="false"/>
+        <!-- app:seekStep：松手时把值吸附到步进的整数倍，轨道只有 ~850px 却要容下几百个档位，
+             一个数值只剩约 1px 的落点，像 0（屏幕居中）这种中间值基本滑不到；吸附到 4 的倍数后
+             0 就有 ~4px 的容错，需要奇数值时点右边的数字芯片直接输。 -->
+        <com.moonlight.freeform.ui.view.NumericSeekBarPreference
+            android:key="sidebar_pos_y_dp"
+            android:title="@string/sidebar_pos_y_title"
+            android:summary="@string/sidebar_pos_y_summary"
+            app:iconSpaceReserved="false"
+            android:defaultValue="0"
+            app:min="-400"
+            android:max="400"
+            app:seekStep="4"
+            app:showSeekBarValue="true"/>
+        <SwitchPreference
+            android:key="sidebar_lock_y"
+            android:title="@string/sidebar_lock_y_title"
+            android:summary="@string/sidebar_lock_y_summary"
+            android:defaultValue="false"
+            app:iconSpaceReserved="false"/>
+
+        <!-- 收起方式：侧边栏 或 悬浮球 -->
+        <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
+            app:entries="@array/minimize_mode"
+            app:entryValues="@array/minimize_mode_value"
+            android:key="minimize_mode"
+            android:title="@string/minimize_mode_title"
+            android:defaultValue="1"
+            app:iconSpaceReserved="false"/>
+
+        <com.moonlight.freeform.ui.view.NumericSeekBarPreference
+            android:key="miniball_size_dp"
+            android:title="@string/miniball_size"
+            app:iconSpaceReserved="false"
+            android:defaultValue="48"
+            app:min="0"
+            android:max="96"
+            app:showSeekBarValue="true"/>
+
+        <com.moonlight.freeform.ui.view.NumericSeekBarPreference
+            android:key="miniball_alpha"
+            android:title="@string/miniball_alpha"
+            android:summary="@string/miniball_alpha_summary"
+            app:iconSpaceReserved="false"
+            android:defaultValue="7"
+            app:min="0"
+            android:max="10"
+            app:showSeekBarValue="true"/>
 
         <Preference
             android:key="quick_floating_app"
@@ -107,11 +265,12 @@
             android:summary="@string/preference_quick_floating_app_summary"
             app:iconSpaceReserved="false"/>
 
-        <SeekBarPreference
+        <com.moonlight.freeform.ui.view.NumericSeekBarPreference
             android:key="floating_alpha"
             android:title="@string/floating_alpha_title"
+            android:summary="@string/floating_alpha_summary"
             app:iconSpaceReserved="false"
-            app:defaultValue="10"
+            android:defaultValue="7"
             app:min="0"
             android:max="10"
             app:showSeekBarValue="true"/>
@@ -130,7 +289,6 @@
         <Preference
             android:key="notification_freeform_apps"
             app:title="@string/preference_notification_apps"
-            android:summary="@string/preference_notification_apps_summary"
             app:iconSpaceReserved="false"/>
 
     </PreferenceCategory>

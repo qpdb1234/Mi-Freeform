@@ -5,21 +5,13 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:background="@drawable/view_corners_bg">
 
-    <com.airbnb.lottie.LottieAnimationView
-        android:id="@+id/lottieView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:lottie_loop="true"
-        app:lottie_rawRes="@raw/loading"
-        app:lottie_autoPlay="true"/>
-
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginEnd="@dimen/wave_sidebar_width" />
 
-    <com.sunshine.freeform.ui.view.WaveSideBarView
+    <com.moonlight.freeform.ui.view.WaveSideBarView
         android:id="@+id/waveSideBarView"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"

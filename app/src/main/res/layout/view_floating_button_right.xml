@@ -5,13 +5,15 @@
     android:layout_width="@dimen/floating_button_width"
     android:layout_height="@dimen/floating_button_height">
 
+    <!-- 不留外边距：把手胶囊必须铺满整个窗口，窗口贴屏幕边缘时可见部分才真正贴边
+         （设置里 X 轴位置=0 的语义就是贴边，之前这里 4dp 让它永远差一个身位）。 -->
     <View
-        android:layout_width="3dp"
+        android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginEnd="4dp"
         android:background="@drawable/bar_corners_bg"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

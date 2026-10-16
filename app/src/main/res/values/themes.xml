@@ -17,6 +17,14 @@
 
     <style name="Theme.MiFreeform" parent="Base.Theme.MiFreeform" />
 
+    <!--启动路由页主题: 去掉开屏画面(透明窗口 + 禁用预览窗口), 仅用于权限/路由, 不显示任何内容-->
+    <style name="Theme.MiFreeform.Splash" parent="Theme.MiFreeform">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+
     <style name="FreeForm.ButtonStyle" parent="Widget.MaterialComponents.Button.TextButton">
         <item name="android:textSize">@dimen/button_text_size</item>
         <item name="android:gravity">start|center_vertical</item>
