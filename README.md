@@ -175,7 +175,7 @@ and similar features also need the accessibility permission.
 | `README.md` | this file — the default version, in English |
 | `README_zh-Hans.md` | Chinese translation of this file |
 | `open_api.md` / `open_api_zh-Hans.md` | open API (English / Chinese) |
-| `qa_zh-Hans.md` | FAQ for the 2.5 series (Chinese only) |
+| `qa.md` / `qa_zh-Hans.md` | FAQ for the 2.5 series (English / Chinese) |
 | `app/update.md` | upstream changelog (Chinese only) |
 | `todo.md` | to-do list (Chinese only) |
 

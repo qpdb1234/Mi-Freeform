@@ -141,7 +141,7 @@ Mi-Freeform（米窗）是一款通过 Shizuku / Sui 激活的 Android 第三方
 | `README.md` | 本说明的英文版（仓库默认版本） |
 | `README_zh-Hans.md` | 简体中文版（本文件） |
 | `open_api.md` / `open_api_zh-Hans.md` | 开放 API（英 / 中） |
-| `qa_zh-Hans.md` | 2.5 版本常见问题 |
+| `qa.md` / `qa_zh-Hans.md` | 2.5 版本常见问题（英 / 中） |
 | `app/update.md` | 历史更新记录（上游） |
 | `todo.md` | 待办 |
 
