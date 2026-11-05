@@ -21,19 +21,29 @@ most apps as a freeform window, and supports Android 8.1 and above.
 >
 > | System version | Status |
 > | --- | --- |
-> | Android 10 | ✅ working |
-> | Android 12 | ✅ working |
-> | Android 14 | ⚠️ **partially working** (tested on a HyperOS 14 phone and an AOSP 14 emulator, on the **adaptation build** described at the end of this section): only the features in the verified list below work, everything else has **not been checked item by item** |
+> | Android 10 | ✅ working (AOSP API 29 emulator, 2026-11) |
+> | Android 12 | ✅ working (AOSP API 31 emulator, 2026-11) |
+> | Android 14 | ⚠️ **partially working** (tested on a HyperOS 14 phone and an AOSP 14 emulator): only the features in the verified list below work, everything else has **not been checked item by item** |
 >
-> **Verified working on Android 14** (2026-11, on the `a14-android14` adaptation build — **not** the
-> 2.5.38 APK released from `main`): opening, closing and resizing
+> **One APK covers all three.** There is no per-version build and no product flavour: the same debug APK
+> (versionCode 2551 / 2.5.38) was installed on the API 29, API 31 and API 34 emulators and ran the same checks:
+>
+> | Check | Android 10 | Android 12 | Android 14 |
+> | --- | --- | --- | --- |
+> | Permission missing → jumps straight to the system overlay page | ✅ jumps | ✅ jumps | ✅ **does not jump** (by design) |
+> | Sidebar handle and sidebar panel visible | ✅ | ✅ | ✅ |
+> | Freeform window (virtual display + activity) | ✅ | ✅ | ✅ |
+> | Touch injection into the freeform | ✅ | ✅ | ✅ |
+> | Overlays left force-hidden by the system after re-granting | n/a | 0 | fixed, see below |
+>
+> **Verified working on Android 14** (2026-11, on a build of the current `main`): opening, closing and resizing
 > freeform windows, the top-bar close button, the back key, the sidebar handle, the sidebar app panel, and the
-> persistent-notification and QS-tile entries. Regression: 3 window rounds, 2 handle rounds, 3 panel rounds —
-> the state described below was not reproduced once.
+> persistent-notification and QS-tile entries. Regression on the HyperOS 14 device: 3 window rounds, 2 handle
+> rounds, 3 panel rounds — the state described below was not reproduced once.
 >
-> **The one system-level Android 14 defect we confirmed** (fixed **only on the `a14-android14` adaptation
-> branch, which is not published and not merged — the builds released from `main` still contain the trigger**;
-> kept here so that people who hit it can recognise it): the freeform window, the sidebar handle and the sidebar
+> **The one system-level Android 14 defect we confirmed** (fixed on `main` since commit `7629360`, 2026-11;
+> described here so that anyone still hitting it on an older build can recognise it): the freeform window,
+> the sidebar handle and the sidebar
 > panel disappear
 > from the screen **at the same time**; the app is still alive, it just shows nothing. The cause is not the
 > hidden-API policy being tightened. On HyperOS 14, when a window is *attempted* while the overlay permission
@@ -55,13 +65,14 @@ most apps as a freeform window, and supports Android 8.1 and above.
 >
 > **Prevention**: grant the overlay permission before opening the first window, or enable the accessibility
 > keep-alive service (its windows use a type that does not need that permission, so no rejected attempt is ever
-> made). **The `a14-android14` adaptation branch no longer jumps anywhere automatically** — the code on `main`
-> still does: on that branch a rejected request only writes one
-> diagnostic record and shows a toast, and the persistent notification explains the reason and carries a
-> "grant permission" action that the user taps to enter the permission page. If the user has switched
-> Mi-Freeform's notifications off entirely (so there is no button to tap), the toast and the record instead
-> point at the path that does not depend on notifications: open Mi-Freeform from the launcher and turn the
-> overlay permission on in its permission page.
+> made). **On Android 14 and above Mi-Freeform no longer jumps anywhere automatically**: a rejected request
+> only writes one diagnostic record and shows a toast, and the persistent notification explains the reason and
+> carries a "grant permission" action that the user taps to enter the permission page. If notifications for
+> Mi-Freeform are switched off entirely (so there is no button to tap), the toast and the record instead point
+> at the path that does not depend on notifications: open Mi-Freeform from the launcher and turn the overlay
+> permission on in its permission page. On Android 8.1–13 the jump is **kept** (`Build.VERSION.SDK_INT < 34`),
+> because it is harmless there: on the API 31 emulator, after that jump and a re-grant, the system reported not
+> a single force-hidden overlay window — those versions keep the one-tap shortcut and pay nothing for it.
 > Versions outside the table above (Android 8.1–9, 11, 13, 15+) have **not been tested**, which does not mean
 > they work.
 >
@@ -73,12 +84,13 @@ most apps as a freeform window, and supports Android 8.1 and above.
 > - No Android 14 device other than that HyperOS 14 phone (Xiaomi MIX 2S) and the AOSP 14 emulator has been tested.
 > - Input method, clipboard and multi-display behaviour on 14 have **not been checked item by item**.
 >
-> Android 14 adaptation happens in a **separate, unpublished copy of the source tree** (local branch
-> `a14-android14`, not pushed to GitHub): the permission
-> gate, the removal of automatic jumps, the "grant permission" action on the persistent notification and the
-> watchdog for hidden windows have all landed there and been regression-tested on a HyperOS 14 device (3 window
-> rounds, 2 handle rounds, 3 panel rounds, none of them re-creating that state). **None of that is in `main`,
-> and none of it is in the released APKs of this repository yet.**
+> The Android 14 adaptation now lives **on `main`** (commit `7629360`): the permission gate, the SDK-34 guard
+> that turns the automatic jump off only where it actually poisons something, the "grant permission" action on
+> the persistent notification, the watchdog that names the app which asked the system to hide the windows, and
+> the statically declared receiver behind the Recents entry. Anything built from `main` after that commit has
+> all of it. **Artifacts built before it do not** — the `v2.5.38` tag sits on the commit that precedes this
+> merge, so a package downloaded from Releases can carry the same 2.5.38 / versionCode 2551 and still behave as
+> described above; when in doubt, build from source or compare against that commit.
 
 Current support:
 - open favorited apps as a freeform window from the global sidebar
