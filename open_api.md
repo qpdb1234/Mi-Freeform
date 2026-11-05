@@ -1,27 +1,54 @@
-# 米窗开放API（持续更新）
+# Mi-Freeform open API (continuously updated)
 
-米窗调用接口现已对外开放，你可以选择以下方式启动米窗提供的小窗：
+**English** | [简体中文](open_api_zh-Hans.md)
 
-## 1.打开米窗提供的应用选择界面
-米窗提供的打开应用选择界面的活动为：com.sunshine.freeform.ui.floating.FloatingActivity。你可以通过其他应用调用该活动以打开应用选择界面。
+The Mi-Freeform call interface is now open to external apps. Choose one of the ways below to start a
+freeform window provided by Mi-Freeform:
 
-<b>请注意：该活动目前需要米窗的保活服务处于运行状态</b>
+## 1. Open the app picker panel provided by Mi-Freeform
+The activity that shows Mi-Freeform's app picker panel is
+`com.mifreeform.freeform/com.moonlight.freeform.ui.floating.FloatingActivity`. You can launch that activity
+from another app to open the picker panel.
 
-## 2.直接打开米窗提供的小窗界面
-除上述方式外，米窗还提供广播方式接收外部应用发送的打开小窗指令。具体例子如下：
+<b>Note: only the "accessibility service" keep-alive mode requires Mi-Freeform to be running already; with the
+foreground-service mode, launching this activity starts Mi-Freeform itself.</b>
+
+## 2. Open a freeform window directly
+Besides the way above, Mi-Freeform also receives "open a freeform window" commands from external apps
+through a broadcast. A complete example:
 
 ```kotlin
-val packageName: String = "com.sunshine.freeform"
-val activityName: String = "com.sunshine.freeform.ui.main.MainActivity"
+//These two are the package name and activity name of "the app you want inside the freeform window".
+//The clock app is used as the example here.
+val packageName: String = "com.google.android.deskclock"
+val activityName: String = "com.android.deskclock.DeskClock"
 val userId: Int = 0
-val intent = Intent("com.sunshine.freeform.start_freeform").apply {
-                    setPackage("com.sunshine.freeform")
-                    //要启动小窗程序的包名：如com.sunshine.freeform
+val intent = Intent("com.mifreeform.freeform.start_freeform").apply {
+                    //You must name the explicit component, setPackage alone is not enough:
+                    //since Android 8 an implicit broadcast (action only) is not delivered to a receiver
+                    //declared statically in the manifest. Once the Mi-Freeform process has been swiped
+                    //away or stopped, that form of sending does nothing at all — no error, no window.
+                    component = ComponentName(
+                        "com.mifreeform.freeform",
+                        "com.moonlight.freeform.broadcast.StartFreeformReceiver"
+                    )
+                    //Package name of the app to start in the window, e.g. com.google.android.deskclock
                     putExtra("packageName", packageName)
-                    //要启动小窗的活动名称，请注意，该活动可能需要对外暴露才可启动。如com.sunshine.freeform.ui.main.MainActivity
+                    //Activity name to start in the window. Note that this activity may have to be
+                    //exported before it can be started.
                     putExtra("activityName", activityName)
-                    //可选，默认为0。对于系统存在“应用分身”等情况，可以指定userId
+                    //Optional, defaults to 0. For cases such as the system's "app clone", a userId
+                    //can be given.
                     putExtra("userId", userId)
                 }
 context.sendBroadcast(intent)
+```
+
+The same path verified with adb (note how `-n` has to be written — an action alone does not get through):
+
+```sh
+am broadcast --user 0 \
+  -n com.mifreeform.freeform/com.moonlight.freeform.broadcast.StartFreeformReceiver \
+  -a com.mifreeform.freeform.start_freeform \
+  --es packageName <package name> --es activityName <activity name> --ei userId 0
 ```
