@@ -70,7 +70,7 @@ class AppsSortRecyclerAdapter(
         return if (userId == 0) {
             pm.getApplicationLabel(applicationInfo)
         } else {
-            "${pm.getApplicationLabel(applicationInfo)}-分身${userId}"
+            "${pm.getApplicationLabel(applicationInfo)}-${context.getString(R.string.fenshen)}${userId}"
         }
     }
 

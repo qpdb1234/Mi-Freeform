@@ -60,7 +60,7 @@ class AppsRecyclerAdapter<T>(
             .load(filterAllAppsList[position].applicationInfo.loadIcon(context.packageManager))
             .transition(DrawableTransitionOptions.withCrossFade())
             .into(holder.icon)
-        holder.name.text = if (userId == 0) filterAllAppsList[position].label else "${filterAllAppsList[position].label}-分身${userId}"
+        holder.name.text = if (userId == 0) filterAllAppsList[position].label else "${filterAllAppsList[position].label}-${context.getString(R.string.fenshen)}${userId}"
         holder.packageName.text = filterAllAppsList[position].applicationInfo.packageName
         if (type == ChooseAppsActivity.TYPE_FLOATING) {
             holder.switch.isChecked = contains(FreeFormAppsEntity(-1, filterAllAppsList[position].applicationInfo.packageName, userId))

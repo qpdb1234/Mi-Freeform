@@ -134,7 +134,7 @@
     <string name="arrow_left" translatable="false">⬅</string>
     <string name="arrow_right" translatable="false">➡</string>
 
-    <string name="fenshen">User</string>
+    <string name="fenshen">Clone</string>
     <string name="running">(Running)</string>
     <string name="floating_label">Open the Sidebar</string>
     <string name="foreground_notification_name">ForegroundService Notification</string>
