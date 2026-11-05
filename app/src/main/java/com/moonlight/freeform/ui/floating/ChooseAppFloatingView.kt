@@ -10,7 +10,6 @@ import android.content.pm.ResolveInfo
 import android.graphics.PixelFormat
 import android.graphics.Point
 import android.hardware.display.DisplayManager
-import android.net.Uri
 import android.os.UserHandle
 import android.os.UserManager
 import android.provider.Settings
@@ -18,7 +17,6 @@ import android.util.DisplayMetrics
 import android.util.Log
 import android.view.*
 import android.widget.LinearLayout
-import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -28,7 +26,9 @@ import com.moonlight.freeform.R
 import com.moonlight.freeform.room.FreeFormAppsEntity
 import com.moonlight.freeform.ui.freeform.FreeformHelper
 import com.moonlight.freeform.ui.view.WaveSideBarView
+import com.moonlight.freeform.utils.DiagnosticsLog
 import com.moonlight.freeform.utils.PackageUtils
+import com.moonlight.freeform.utils.PermissionUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import java.util.*
@@ -359,6 +359,14 @@ class ChooseAppFloatingView(
      */
     private fun addFloatingWindow() {
         if (windowAttached) return
+        // 先裁决再挂窗：面板用的是普通悬浮窗类型（见上面那段注释），没权限时**一次 addView 都不要调**。
+        // 旧写法是先盲发一次、抛异常了再看权限，而那一次失败的请求在 HyperOS 14 上会把
+        // 本进程之后所有非系统悬浮窗永久隐藏掉（原因见 PermissionUtils.pickOverlayWindowType）。
+        if (!Settings.canDrawOverlays(context)) {
+            Log.w(TAG, "panel_start_rejected no_overlay_permission")
+            dropPanelAndAskForPermission(context.getString(R.string.scene_open_panel_failed))
+            return
+        }
         if (floatingView == null) {
             floatingView = LayoutInflater.from(context).inflate(R.layout.view_choose_app_floating, null, false)
         }
@@ -393,35 +401,37 @@ class ChooseAppFloatingView(
             windowManager.addView(floatingView, floatingViewLayoutParams)
             windowAttached = true
         } catch (e: Exception) {
+            Log.w(TAG, "panel_add_view_failed", e)
             windowAttached = false
-            windowManager.removeViewImmediate(floatingView)
-            if (Settings.canDrawOverlays(context)) {
-                windowManager.addView(floatingView, floatingViewLayoutParams.apply {
-                    type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                })
-                windowAttached = true
-            } else {
-                //没权限：现建的这棵树留着也没用，丢掉，同时引导用户去授权
-                floatingView = null
-                appsRecyclerView = null
-                boundApps = null
-                // 窗口没挂上，一定要把「正开着」标记清掉，不然下一次点通知/把手会被挡掉
-                removeCallback.onChooseAppWindowRemove()
-                try {
-                    Toast.makeText(context, context.getString(R.string.request_overlay_permission), Toast.LENGTH_LONG).show()
-                    val intent = Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:${context.packageName}")
-                    )
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(
-                        intent
-                    )
-                } catch (e: Exception) {
-                    Toast.makeText(context, context.getString(R.string.request_overlay_permission_fail), Toast.LENGTH_LONG).show()
-                }
+            // 没挂上去时这句必抛，不能让它把异常抛回调用方（那会把服务进程带崩）
+            try {
+                windowManager.removeViewImmediate(floatingView)
+            } catch (removeException: Exception) {
+                Log.w(TAG, "panel_remove_half_attached_view_failed", removeException)
             }
+            // 不重试：面板本来就固定是普通悬浮窗类型，重试等于再发一次同样的请求，
+            // 而在这台机上多发一次被拒的请求就多一次把全进程悬浮窗毒掉的机会。
+            DiagnosticsLog.recordRes(
+                context, "overlay_rejected",
+                R.string.diag_panel_attach_exception, e.javaClass.simpleName
+            )
+            dropPanelAndAskForPermission(context.getString(R.string.scene_panel_attach_failed))
         }
+    }
+
+    /**
+     * 面板挂不上：丢掉现建的视图树、清掉「正开着」标记，并告知用户缺什么权限。
+     *
+     * 只告知、不跳系统设置页（原因见 [PermissionUtils.guideToGrantOverlayPermission]）。
+     */
+    private fun dropPanelAndAskForPermission(scene: String) {
+        //没权限：现建的这棵树留着也没用，丢掉
+        floatingView = null
+        appsRecyclerView = null
+        boundApps = null
+        // 窗口没挂上，一定要把「正开着」标记清掉，不然下一次点通知/把手会被挡掉
+        removeCallback.onChooseAppWindowRemove()
+        PermissionUtils.guideToGrantOverlayPermission(context, scene)
     }
 
     /**
@@ -431,7 +441,9 @@ class ChooseAppFloatingView(
         screenRotation = newRotation
         try {
             windowManager.removeViewImmediate(allAppsView)
-        }catch (e: Exception) { }
+        }catch (e: Exception) {
+            Log.w(TAG, "remove_all_apps_view_failed(rotation)", e)
+        }
         // 旧的树是按旋转前的尺寸与贴边方向搭的，整个丢掉重来
         discardPanelTree()
         removeCallback.onChooseAppWindowRemove()
@@ -456,7 +468,10 @@ class ChooseAppFloatingView(
         if (windowAttached) {
             try {
                 windowManager.removeViewImmediate(floatingView)
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                // 面板窗口没摘成就是僵尸窗口：看不见、点不开，但一直占着 surface。
+                Log.w(TAG, "discard_panel_window_failed", e)
+            }
             windowAttached = false
             // 面板是我们自己摘掉的，不是用户点的：服务那边的「正开着」标记必须跟着清掉，
             // 否则它会以为面板还在，下一次点通知/点把手被防重入挡掉，看起来就是点了没反应。
@@ -476,7 +491,9 @@ class ChooseAppFloatingView(
         discardPanelTree(notifyRemoved = false)
         try {
             windowManager.removeViewImmediate(allAppsView)
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "remove_all_apps_view_failed(dispose)", e)
+        }
         allAppsView = null
     }
 
@@ -540,7 +557,9 @@ class ChooseAppFloatingView(
                             override fun onClick() {
                                 try {
                                     windowManager.removeViewImmediate(allAppsView)
-                                }catch (e: Exception) {}
+                                }catch (e: Exception) {
+                                    Log.w(TAG, "remove_all_apps_view_failed(click)", e)
+                                }
 
                                 removeCallback.onChooseAppWindowRemove()
                             }
@@ -563,7 +582,7 @@ class ChooseAppFloatingView(
                         try {
                             windowManager.removeViewImmediate(allAppsView)
                         } catch (e: Exception) {
-
+                            Log.w(TAG, "remove_all_apps_view_failed(touch-outside)", e)
                         }
                         removeCallback.onChooseAppWindowRemove()
                         true
@@ -573,19 +592,8 @@ class ChooseAppFloatingView(
 
             windowManager.addView(allAppsView, layoutParams)
         } else {
-            try {
-                Toast.makeText(context, context.getString(R.string.request_overlay_permission), Toast.LENGTH_LONG).show()
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:${context.packageName}")
-                )
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(
-                    intent
-                )
-            } catch (e: Exception) {
-                Toast.makeText(context, context.getString(R.string.request_overlay_permission_fail), Toast.LENGTH_LONG).show()
-            }
+            Log.w(TAG, "all_apps_start_rejected no_overlay_permission")
+            PermissionUtils.guideToGrantOverlayPermission(context, context.getString(R.string.scene_all_apps_failed))
         }
 
     }
@@ -597,7 +605,11 @@ class ChooseAppFloatingView(
         if (windowAttached) {
             try {
                 windowManager.removeViewImmediate(floatingView)
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                // 摘失败后面板会永久不可见，而 windowAttached 会被置 false，
+                // 下次就再也不会去摘它了——这就是那种「面板打不开也关不掉」的根源。
+                Log.w(TAG, "remove_panel_window_failed", e)
+            }
             windowAttached = false
         }
         removeCallback.onChooseAppWindowRemove()

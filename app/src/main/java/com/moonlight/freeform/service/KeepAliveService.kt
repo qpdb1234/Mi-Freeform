@@ -7,14 +7,12 @@ import android.content.*
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
-import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.util.Log
 import android.view.*
 import android.view.accessibility.AccessibilityEvent
-import android.widget.Toast
 import androidx.annotation.RequiresApi
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.moonlight.freeform.R
@@ -22,6 +20,7 @@ import com.moonlight.freeform.app.MiFreeform
 import com.moonlight.freeform.broadcast.StartFreeformReceiver
 import com.moonlight.freeform.ui.floating.ChooseAppFloatingView
 import com.moonlight.freeform.ui.freeform.FreeformConfig
+import com.moonlight.freeform.utils.PermissionUtils
 import kotlinx.coroutines.*
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
@@ -171,7 +170,9 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
                         initConfig()
                         try {
                             chooseAppFloatingView.onScreenRotationChanged(screenRotation)
-                        } catch (e: Exception) {}
+                        } catch (e: Exception) {
+                            Log.w(TAG, "rotation_changed_notify_failed", e)
+                        }
                     }
                 }
             }
@@ -257,6 +258,7 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
         try {
             unregisterReceiver(startFreeformReceiver)
         } catch (e: Exception) {
+            Log.d(TAG, "unregister startFreeformReceiver skipped", e)
         }
 
         Shizuku.removeBinderReceivedListener(binderReceivedListener)
@@ -265,6 +267,7 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
             try {
                 iWindowManager.removeRotationWatcher(rotationWatcher)
             } catch (e: Exception) {
+                Log.w(TAG, "removeRotationWatcher failed", e)
             }
         }
         // 服务销毁：面板的窗口与预搭好的视图树一起丢掉
@@ -305,6 +308,7 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
             initConfig()
             if (orientationChanged) {
                 runCatching { chooseAppFloatingView.onScreenRotationChanged(screenRotation) }
+                    .onFailure { Log.w(TAG, "notify_panel_rotation_failed", it) }
             }
         } else if (isShowingFloating) {
             // 只是屏幕尺寸变了（密度没变）：原地改窗口大小与贴边基准即可，不重建、不闪烁。
@@ -385,10 +389,16 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
                             floatView,
                             windowLayoutParams.apply { alpha = config.alpha }
                         )
-                    }catch (e: Exception) {}
+                    }catch (e: Exception) {
+                        Log.w(TAG, "apply_floating_alpha_failed", e)
+                    }
                 }
             }
         }
+        }.onFailure {
+            // 单个 key 处理失败不该带崩共享进程（无障碍模式下本服务跑在主进程里），
+            // 但也不能默默吐掉，否则设置改了没反映永远查不到原因。
+            Log.w(TAG, "onSharedPreferenceChanged key=$key handled failed", it)
         }
     }
 
@@ -444,19 +454,11 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
                 isShowingFloating = false
             }
         } else {
-            try {
-                Toast.makeText(this, getString(R.string.request_overlay_permission), Toast.LENGTH_LONG).show()
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:${packageName}")
-                )
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(
-                    intent
-                )
-            } catch (e: Exception) {
-                Toast.makeText(this, getString(R.string.request_overlay_permission_fail), Toast.LENGTH_LONG).show()
-            }
+            // 没权限：一次 addView 都不调，只告知（原因见 PermissionUtils.pickOverlayWindowType）。
+            // 旧写法这里会 Toast 后直接跳系统悬浮窗设置页，而 Android 14 上正是这一跳
+            // 会把本进程之后的所有悬浮窗隐藏掉（与 ForegroundService 同一处修复）。
+            Log.w(TAG, "handle_start_rejected no_overlay_permission")
+            PermissionUtils.guideToGrantOverlayPermission(this, getString(R.string.scene_handle))
         }
 
     }
@@ -465,7 +467,8 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
         try {
             windowManager.removeViewImmediate(floatView)
         } catch (e: Exception) {
-
+            // 把手窗口没拆掉就会变成僵尸窗口（看不见但仍占 surface），必须出声。
+            Log.w(TAG, "removeFloating failed (zombie handle window?)", e)
         }
         isShowingFloating = false
     }
@@ -491,7 +494,7 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
                     alpha = config.alpha
                 }
             )
-        }
+        }.onFailure { Log.w(TAG, "applyFloatingLayout failed", it) }
     }
 
     /**

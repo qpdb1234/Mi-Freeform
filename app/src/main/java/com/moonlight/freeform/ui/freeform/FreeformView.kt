@@ -2,15 +2,15 @@ package com.moonlight.freeform.ui.freeform
 
 import android.annotation.SuppressLint
 import android.app.*
+import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.SurfaceTexture
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.hardware.input.IInputManager
-import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -25,6 +25,9 @@ import androidx.core.view.marginTop
 import com.moonlight.freeform.R
 import com.moonlight.freeform.app.MiFreeform
 import com.moonlight.freeform.databinding.ViewFreeformBinding
+import com.moonlight.freeform.service.KeepAliveService
+import com.moonlight.freeform.utils.DiagnosticsLog
+import com.moonlight.freeform.utils.PermissionUtils
 import kotlinx.coroutines.*
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
@@ -73,6 +76,33 @@ class FreeformView(
      * 小窗就留在屏幕上、虚拟屏也停在全屏尺寸，下次打开应用画面会比小窗小一圈。
      */
     private var isDestroyed = false
+
+    /**
+     * 窗口此刻是否真的挂在 WindowManager 上。
+     *
+     * destroy() 用它决定要不要 removeView。没有这个标记就会自己造假警报：
+     * 开窗失败（两种窗口类型的 addView 都没成）之后照样会走 destroy()，
+     * 那时 removeViewImmediate 必然抛「View not attached」，于是我们记下一条
+     * 「僵尸窗口占内存」，可屏幕上根本什么都没有。实测已经误报过一次。
+     */
+    private var windowAttached = false
+
+    /**
+     * 开完窗后回头确认「系统真的把这个窗口画出来了」的第一次检查。
+     *
+     * 为什么需要：窗口被系统隐藏时，本地一切看起来都是正常的——addView 不报错、
+     * TextureView 照样拿到纹理、虚拟屏照样在跑，只有屏上什么都没有。
+     * 实测那种窗口在 WMS 里是 mForceHideNonSystemOverlayWindow=true。
+     */
+    private val surfaceWatchdog = Runnable { probeWindowDisplayed(first = true) }
+
+    /**
+     * 第二次的确认检查。
+     *
+     * 不能一看「被隐藏」就拆窗：实测过一种只会持续几秒的隐藏，下一秒自己又好了，
+     * 那时拆掉等于把用户正在用的小窗弄没。真正要治的是那种一直到进程重启都不恢复的。
+     */
+    private val surfaceWatchdogConfirm = Runnable { probeWindowDisplayed(first = false) }
 
     /** 供外部（再次启动同一应用时）调用的销毁入口，幂等。 */
     override fun destroyFreeform() {
@@ -364,13 +394,23 @@ class FreeformView(
                 activityTaskManager?.registerTaskStackListener(taskStackListener)
             }
             activityManager = IActivityManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("activity")))
-        }catch (e: Exception) {}
+        }catch (e: Exception) {
+            // 拿不到 activity_task 就没有 taskStackListener，小窗不会跟随任务移动/旋转，
+            // 但界面看起来只是「有点不对」，不留痕根本查不出来。
+            Log.w(TAG, "init_activity_task_service_failed pkg=${config.packageName}", e)
+        }
         try {
             inputManager = IInputManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("input")))
-        }catch (e: Exception) {}
+        }catch (e: Exception) {
+            // input 服务拿不到时触控是静默失效的（这里用的是安全调用，不会崩），必须记下来。
+            Log.w(TAG, "init_input_service_failed pkg=${config.packageName}", e)
+        }
         try {
             iWindowManager = IWindowManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("window")))
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            // 拿不到 window 服务就注册不了 rotation watcher，小窗不会跟转屏。
+            Log.w(TAG, "init_window_service_failed pkg=${config.packageName}", e)
+        }
     }
 
     private fun initConfig() {
@@ -485,6 +525,11 @@ class FreeformView(
             )
         } catch (e: Exception) {
             Toast.makeText(context, context.getString(R.string.create_display_fail), Toast.LENGTH_SHORT).show()
+            DiagnosticsLog.recordRes(
+                context, "create_display",
+                R.string.diag_create_display_failed,
+                config.packageName, freeformScreenWidth, freeformScreenHeight, config.freeformDpi, e.javaClass.simpleName
+            )
             return
         }
 
@@ -586,6 +631,22 @@ class FreeformView(
         get() = FreeformWindowGeometry.chromeHeight(context)
 
     private fun showWindow() {
+        // 先弄清楚这次有资格用哪种窗口类型，再决定要不要调 addView。
+        // 实测（HyperOS 14）：在没有悬浮窗权限的状态下调 addView，会被系统记成一次
+        // 「被拒的非系统悬浮窗请求」，而这个进程之后创建的**所有**非系统悬浮窗都会被
+        // 永久置为 mForceHideNonSystemOverlayWindow=true——重新授权也不解除，只有重启进程才恢复。
+        // 旧代码不管三七二十一先试 TYPE_ACCESSIBILITY_OVERLAY，而本机没开无障碍服务，
+        // 于是每次开窗都先白抛一个 BadTokenException；未授权时那一次正好制造上述毒化。
+        val overlayAllowed = Settings.canDrawOverlays(context)
+        val accessibilityOverlayUsable = isAccessibilityServiceEnabled()
+
+        if (!overlayAllowed && !accessibilityOverlayUsable) {
+            // 两种类型都没资格：一次都不要试，直接告诉用户缺什么。
+            Log.w(TAG, "start_rejected no_overlay_permission pkg=${config.packageName}")
+            requestOverlayPermissionUi(destroyFirst = true)
+            return
+        }
+
         if (virtualDisplayRotation == VIRTUAL_DISPLAY_ROTATION_PORTRAIT) {
             windowLayoutParams.apply {
                 width = freeformWidth + windowChromeWidth
@@ -598,7 +659,11 @@ class FreeformView(
             }
         }
         windowLayoutParams.apply {
-            type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            type = if (accessibilityOverlayUsable) {
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            } else {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            }
             flags =
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -630,33 +695,197 @@ class FreeformView(
 
         try {
             windowManager.addView(binding.root, windowLayoutParams)
+            windowAttached = true
         } catch (e: Exception) {
+            // 走到这里说明这个窗口类型被系统拒了（无障碍服务实际没生效、窗口数上限等都会到这）。
+            Log.w(TAG, "add_view_failed pkg=${config.packageName} type=${windowLayoutParams.type}", e)
+            windowAttached = false
             try {
                 windowManager.removeViewImmediate(binding.root)
-            } catch (e: Exception) {}
+            } catch (removeException: Exception) {
+                // 半挂着的窗口不清掉就会变成僵尸窗口（有 surface、不可见、没人回收）。
+                Log.w(TAG, "remove_half_attached_view_failed pkg=${config.packageName}", removeException)
+            }
 
-            if (Settings.canDrawOverlays(context)) {
-                windowManager.addView(binding.root, windowLayoutParams.apply {
-                    type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                })
-            } else {
-                destroy()
+            if (overlayAllowed) {
+                // 只有确认有悬浮窗权限才允许退回去重试一次：没权限时第二次 addView
+                // 又是一次「被拒请求」，会把整个进程的悬浮窗都毒掉。
                 try {
-                    Toast.makeText(context, context.getString(R.string.request_overlay_permission), Toast.LENGTH_LONG).show()
-                    val intent = Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:${context.packageName}")
+                    windowManager.addView(binding.root, windowLayoutParams.apply {
+                        type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    })
+                    windowAttached = true
+                } catch (fallbackException: Exception) {
+                    // 两次 addView 全部失败。以前这里不把异常接住，它会一路穿出
+                    // FreeformView.<init> 到调用方，而已经建好的虚拟屏没人 release
+                    // ——就是实测看到的「屏幕上一个小窗都没有，却占着一个虚拟屏」。
+                    Log.e(TAG, "add_view_fallback_failed pkg=${config.packageName}", fallbackException)
+                    DiagnosticsLog.recordRes(
+                        context, "overlay_rejected",
+                        R.string.diag_overlay_rejected_both, config.packageName
                     )
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(
-                        intent
-                    )
-                } catch (e: Exception) {
-                    Toast.makeText(context, context.getString(R.string.request_overlay_permission_fail), Toast.LENGTH_LONG).show()
+                    destroy()
                 }
+            } else {
+                // 有资格试无障碍窗口、却没有悬浮窗权限，所以没有退路可试。
+                Log.e(TAG, "add_view_rejected_no_fallback pkg=${config.packageName}", e)
+                DiagnosticsLog.recordRes(
+                    context, "overlay_rejected",
+                    R.string.diag_overlay_rejected_no_fallback, config.packageName
+                )
+                destroy()
+            }
+        }
+
+        // addView 成功并不等于小窗真的显示出来了：窗口的可见性是 addView 那一刻由系统
+        // 裁决的、之后不会再改。所以挂一个看门狗，回头确认系统真的在画这个窗口。
+        if (windowAttached) {
+            binding.root.postDelayed(surfaceWatchdog, SURFACE_WATCHDOG_MS)
+        }
+    }
+
+    /**
+     * 缺悬浮窗权限时告知用户，并把已经建起来的东西拆干净。
+     *
+     * 以前这里还会顺手 `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)` 把用户送去授权，
+     * 而真机实验定下的就是这一跳：真实拒绝分支 4/4 把全进程悬浮窗毒掉，
+     * 只去掉跳转的对照 0/4（HyperOS 14，理由与数据见 [PermissionUtils.guideToGrantOverlayPermission]）。
+     * 所以告知里不再有任何自动跳转，授权入口改成常驻通知上的「去授权」（用户主动点）。
+     */
+    private fun requestOverlayPermissionUi(destroyFirst: Boolean) {
+        if (destroyFirst) {
+            destroy()
+        }
+        PermissionUtils.guideToGrantOverlayPermission(context, context.getString(R.string.scene_freeform_failed, config.packageName))
+    }
+
+    /**
+     * 本应用是否作为无障碍服务被系统启用。只有这时 TYPE_ACCESSIBILITY_OVERLAY 才是合法的窗口类型。
+     */
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        return try {
+            val enabled = Settings.Secure.getString(
+                context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: return false
+            val mine = ComponentName(context, KeepAliveService::class.java)
+            val full = mine.flattenToString()
+            val short = mine.flattenToShortString()
+            enabled.split(':').any { it.equals(full, true) || it.equals(short, true) }
+        } catch (e: Exception) {
+            // 读不到就当作没开，退回普通悬浮窗类型；但必须留痕，否则只能看到「换了种窗口类型」。 
+            Log.w(TAG, "read_accessibility_state_failed pkg=${config.packageName}", e)
+            false
+        }
+    }
+
+    /**
+     * 问一次系统「我们自己的悬浮窗里有没有被强制隐藏的」。
+     *
+     * 判据是进程级的（我们这个应用的任一窗口命中就算）：实测隐藏就是整个进程一起被隐藏，
+     * 而不是单个窗口；而窗口在被隐藏时本地状态全正常，区分不到具体哪一个，所以不强行区分。
+     *
+     * @param first 第一次探到隐藏不马上拆窗，隔一段时间再确认一次，避免误拆只是瞬时隐藏的窗口
+     */
+    private fun probeWindowDisplayed(first: Boolean) {
+        if (isDestroyed || isBackstage) return
+
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        if (powerManager?.isInteractive != true) {
+            // 息屏时系统本来就不画，等亮屏再看一眼，别在锁屏里误报
+            binding.root.postDelayed(surfaceWatchdog, SURFACE_WATCHDOG_MS)
+            return
+        }
+
+        val service = MiFreeform.me?.getControlService() ?: return
+
+        // 本地问不出「系统有没有在画我的窗口」：addView 不报错、TextureView 照样拿到纹理、
+        // windowVisibility 也是自己想要的值——实测被隐藏的窗口这些全都正常。
+        // 唯一可靠的判据在 WMS 那边，而我们有 system uid 的 shell 通道；
+        // execShell 只回传退出码，所以把判据压成一个布尔：命中就 exit 0。
+        scope.launch(Dispatchers.IO) {
+            val hiddenBySystem = try {
+                service.execShell(HIDDEN_WINDOW_CHECK_COMMAND, false)
+            } catch (e: Exception) {
+                Log.w(TAG, "window_visibility_probe_failed pkg=${config.packageName}", e)
+                false
+            }
+            if (!hiddenBySystem) return@launch
+
+            withContext(Dispatchers.Main) {
+                if (isDestroyed || isBackstage) return@withContext
+                if (first) {
+                    Log.w(TAG, "window_not_displayed_suspect pkg=${config.packageName} type=${windowLayoutParams.type}")
+                    binding.root.postDelayed(surfaceWatchdogConfirm, SURFACE_CONFIRM_MS)
+                    return@withContext
+                }
+
+                Log.e(TAG, "window_not_displayed pkg=${config.packageName} type=${windowLayoutParams.type}")
+
+                // 同样是「窗口在、但系统不画」，成因其实分两类，给用户的话完全相反：
+                // 一类是小窗里那个应用自己带 HIDE_NON_SYSTEM_OVERLAY_WINDOWS（Android 12+ 防劫持，
+                // 原版 A14 实测：退出它就恢复，重启反倒没用）；另一类点不出名，只能走老文案。
+                // 所以拆窗之前先点一次名，再决定报哪一条。
+                val culprit = probeHideRequester()
+                if (culprit.isNotEmpty()) {
+                    Log.e(TAG, "window_hidden_by_app_request pkg=${config.packageName} culprit=$culprit")
+                    DiagnosticsLog.recordRes(
+                        context, "window_hidden",
+                        R.string.diag_window_hidden_by_app, culprit
+                    )
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.window_hidden_by_app, friendlyCulprit(culprit)),
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    DiagnosticsLog.recordRes(
+                        context, "window_hidden",
+                        R.string.diag_window_hidden, config.packageName
+                    )
+                    Toast.makeText(context, context.getString(R.string.window_hidden_by_system), Toast.LENGTH_LONG).show()
+                }
+                destroy()
             }
         }
     }
+
+    /**
+     * 命中强制隐藏之后，再问一句「是哪个应用要求的」。
+     *
+     * 判据是别的窗口带 HIDE_NON_SYSTEM_OVERLAY_WINDOWS：原版 A14 实测系统设置页就带这个 flag，
+     * 而且它即使跑在虚拟屏上，被隐藏的也是我们主屏上的悬浮窗——跨显示屏、全局生效。
+     * 查不到就回空串，调用方走兜底文案；这一步失败不影响拆窗本身。
+     */
+    private fun probeHideRequester(): String {
+        val service = MiFreeform.me?.getControlService() ?: return ""
+        return try {
+            service.execShellText(HIDDEN_WINDOW_CULPRIT_COMMAND, false)
+                .lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.joinToString("、")
+        } catch (e: Exception) {
+            Log.w(TAG, "window_hidden_culprit_probe_failed pkg=${config.packageName}", e)
+            ""
+        }
+    }
+
+    /**
+     * 把点名点出来的包名换成应用显示名，只给用户看的那一份换。
+     *
+     * Toast 在 A14 上实测只有两行、超出就省略号截掉，而 com.android.settings 这种包名
+     * 一个就吃掉 20 个字符，既占额度用户也读不懂；换成「设置 / Settings」省一半以上。
+     * 日志和诊断记录仍然记原始包名——那两处是要拿来定位的，不能被显示名替代。
+     * 取不到显示名（应用被卸载、无 info）就退回包名，点名这一步绝不因为翻译失败而丢掉。
+     */
+    private fun friendlyCulprit(culprit: String): String =
+        culprit.split("、").filter { it.isNotBlank() }.joinToString("、") { name ->
+            try {
+                context.packageManager.getApplicationLabel(
+                    context.packageManager.getApplicationInfo(name, 0)
+                ).toString()
+            } catch (e: Exception) {
+                Log.w(TAG, "window_hidden_culprit_label_failed culprit=$name", e)
+                name
+            }
+        }
 
     /**
      * 禁用更新过渡动画
@@ -671,7 +900,11 @@ class FreeformView(
             val noAnimFlag: Int = noAnim.getInt(windowLayoutParams)
             privateFlagsValue = privateFlagsValue or noAnimFlag
             privateFlags.setInt(windowLayoutParams, privateFlagsValue)
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            // PRIVATE_FLAG_NO_MOVE_ANIMATION 是隐藏字段，高版本反射失败很常见，
+            // 失败后果只是拖窗带过渡动画，但必须能查到是不是这条路断了。
+            Log.w(TAG, "disable_move_animation_flag_failed", e)
+        }
     }
 
     private fun setWindowEnableUpdateAnimation() {
@@ -684,7 +917,9 @@ class FreeformView(
             val noAnimFlag: Int = noAnim.getInt(windowLayoutParams)
             privateFlagsValue = privateFlagsValue and noAnimFlag.inv()
             privateFlags.setInt(windowLayoutParams, privateFlagsValue)
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Log.w(TAG, "enable_move_animation_flag_failed", e)
+        }
     }
 
     private fun onFreeFormRotationChanged() {
@@ -882,8 +1117,25 @@ class FreeformView(
     }
 
     override fun moveToFirst() {
-        windowManager.removeViewImmediate(binding.root)
-        windowManager.addView(binding.root, windowLayoutParams)
+        if (windowAttached) {
+            try {
+                windowManager.removeViewImmediate(binding.root)
+            } catch (e: Exception) {
+                Log.w(TAG, "remove_view_failed(toFront) pkg=${config.packageName}", e)
+            }
+            windowAttached = false
+        }
+        // 置顶是用户点击触发的高频路径：权限中途被收回时这里会招，不接住就是碰到小窗就闪退。
+        try {
+            windowManager.addView(binding.root, windowLayoutParams)
+            windowAttached = true
+        } catch (e: Exception) {
+            Log.e(TAG, "add_view_failed(toFront) pkg=${config.packageName} type=${windowLayoutParams.type}", e)
+            DiagnosticsLog.recordRes(
+                context, "overlay_rejected",
+                R.string.diag_bring_to_front_failed, config.packageName, e.javaClass.simpleName
+            )
+        }
         FreeformHelper.addFreeformToSet(this)
     }
 
@@ -895,7 +1147,14 @@ class FreeformView(
      * - MODE_BALL：变成悬浮球，在屏幕边缘显示应用图标，点击恢复。
      */
     private fun toBackstage() {
-        windowManager.removeViewImmediate(binding.root)
+        if (windowAttached) {
+            try {
+                windowManager.removeViewImmediate(binding.root)
+            } catch (e: Exception) {
+                Log.w(TAG, "remove_view_failed(toBackstage) pkg=${config.packageName}", e)
+            }
+            windowAttached = false
+        }
         FreeformHelper.removeFreeformFromSet(this)
         FreeformHelper.addMiniFreeformToSet(this)
         isBackstage = true
@@ -921,7 +1180,21 @@ class FreeformView(
         // 悬浮球模式下，恢复小窗时要先把球收掉。
         miniBall?.dismiss()
         miniBall = null
-        windowManager.addView(binding.root, windowLayoutParams)
+        try {
+            windowManager.addView(binding.root, windowLayoutParams)
+            windowAttached = true
+        } catch (e: Exception) {
+            Log.e(TAG, "add_view_failed(fromBackstage) pkg=${config.packageName} type=${windowLayoutParams.type}", e)
+            DiagnosticsLog.recordRes(
+                context, "overlay_rejected",
+                R.string.diag_resume_attach_failed, config.packageName, e.javaClass.simpleName
+            )
+        }
+
+        // 收起再恢复时窗口是重新创建的，同样可能被系统藏着，看门狗重新上班
+        binding.root.removeCallbacks(surfaceWatchdog)
+        binding.root.removeCallbacks(surfaceWatchdogConfirm)
+        binding.root.postDelayed(surfaceWatchdog, SURFACE_WATCHDOG_MS)
 
         // 修复：收起再还原后小窗变透明 / 白屏。
         // toBackstage 走 removeViewImmediate，TextureView 的 SurfaceTexture 会被销毁；
@@ -1276,7 +1549,7 @@ class FreeformView(
                 .invoke(up, InputDevice.SOURCE_KEYBOARD)
             inputManager?.injectInputEvent(up, virtualDisplay.display.displayId)
         } catch (e: Exception) {
-
+            Log.w(TAG, "press_back_failed pkg=${config.packageName}", e)
         }
     }
 
@@ -1316,22 +1589,44 @@ class FreeformView(
 
         isDestroy = true
         isDestroyed = true
-        try {
-            windowManager.removeViewImmediate(binding.root)
-        }catch (e: Exception) { }
+        binding.root.removeCallbacks(surfaceWatchdog)
+        binding.root.removeCallbacks(surfaceWatchdogConfirm)
+        // 只摘真正挂上去的窗口。没挂上去时 removeViewImmediate 必抛，
+        // 那条异常会被记成 zombie_window，是我们自己造的假警报。
+        if (windowAttached) {
+            windowAttached = false
+            try {
+                windowManager.removeViewImmediate(binding.root)
+            } catch (e: Exception) {
+                // 这一句失败窗口就永久留在 WindowManager 里（带 surface、看不见、占 30+MB），
+                // 而且后面 virtualDisplay 照样会被 release，变成「有窗口没画面」的僵尸。
+                // 实测这种僵尸窗口确实存在，所以这里必须出声。
+                Log.e(TAG, "remove_view_failed - zombie window left pkg=${config.packageName}", e)
+                DiagnosticsLog.recordRes(
+                    context, "zombie_window",
+                    R.string.diag_zombie_window, config.packageName, e.javaClass.simpleName
+                )
+            }
+        }
         try {
             virtualDisplay.surface.release()
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "release_surface_failed pkg=${config.packageName}", e)
+        }
         virtualDisplay.release()
 
         try {
             iWindowManager?.removeRotationWatcher(iRotationWatcher)
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "remove_rotation_watcher_failed pkg=${config.packageName}", e)
+        }
 
 
         try {
             screenListener.unregisterListener()
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "unregister_screen_listener_failed pkg=${config.packageName}", e)
+        }
 
         //移除小窗管理
         //任务跳到全屏被清掉时，小窗可能正挂在后台（收起到侧边栏/悬浮球），
@@ -1342,7 +1637,9 @@ class FreeformView(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 activityTaskManager?.unregisterTaskStackListener(taskStackListener)
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.w(TAG, "unregister_task_stack_listener_failed pkg=${config.packageName}", e)
+            }
         }
     }
 
@@ -1356,6 +1653,11 @@ class FreeformView(
                 freeformView?.moveToFirst()
             } else if (FreeformHelper.isAppInMiniFreeform(config.packageName, config.userId)) {
                 FreeformHelper.getMiniFreeformStackSet().getByPackageName(config.packageName, config.userId)?.fromBackstage()
+            } else if (!Settings.canDrawOverlays(context) && !isAccessibilityServiceEnabled()) {
+                // 裁决前置到建虚拟屏之前（`_rz268` 的 rz_gate_first 臂实测通过后转正）：
+                // 两种窗口类型都没资格时，连虚拟屏都不必建起来再拆，直接告知缺权限。
+                Log.w(TAG, "start_rejected no_overlay_permission gate_first pkg=${config.packageName}")
+                requestOverlayPermissionUi(destroyFirst = false)
             } else {
                 initSystemService()
                 initConfig()
@@ -1371,6 +1673,12 @@ class FreeformView(
             }
         }
         else {
+            // 实测：force-stop 后第一次开小窗就是走到这里——无窗口、无虚拟屏、无日志，
+            // 用户只看到「点了没反应」。Toast 一响就过，所以必须同时留下可回放的记录。
+            Log.w(TAG, "start_rejected shizuku not bound pkg=${config.packageName}")
+            DiagnosticsLog.recordRes(
+                context, "shizuku_unbound", R.string.service_not_running_pkg, config.packageName
+            )
             MiFreeform.me?.initShizuku()
             Toast.makeText(context, context.getString(R.string.service_not_running), Toast.LENGTH_SHORT).show()
         }
@@ -1547,7 +1855,11 @@ class FreeformView(
                 if (taskInfo.baseActivity!!.packageName == config.packageName && userId == config.userId) {
                     taskId = taskInfo.taskId
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                // userId 字段名一变（高版本可能改名或提升为公开属性），taskId 就永远停在旧值，
+                // 后果是应用自己转屏时小窗不复位。失败必须可见。
+                Log.w(TAG, "read_task_userId_failed pkg=${config.packageName}", e)
+            }
         }
 
         override fun onTaskRequestedOrientationChanged(tId: Int, requestedOrientation: Int) {
@@ -1581,6 +1893,28 @@ class FreeformView(
 
     companion object {
         private const val TAG = "FreeformView"
+
+        // 开完窗后等多久判定「系统没给 surface」。MIX 2S 上正常路径远早于这个值，
+        // 留出余量是为了慢机器上不误报；宁可晚报四秒，也别漏掉占着虚拟屏的隐形窗口。
+        private const val SURFACE_WATCHDOG_MS = 4000L
+
+        // 第一次探到隐藏之后，隔多久再确认。实测瞬时隐藏几秒就会自己恢复，
+        // 而真正要治的那种一直到进程重启都不恢复，所以这一头放宽到十秒不影响判定。
+        private const val SURFACE_CONFIRM_MS = 10000L
+
+        // 只统计「我们自己的窗口块」里出现的强制隐藏标记，命中就 exit 0。
+        // dumpsys 里一个窗口以 "Window #N Window{... pkg}" 开头，后续行属于同一个块，
+        // 所以用 f 记住「现在是不是在读我们自己的块」。
+        private const val HIDDEN_WINDOW_CHECK_COMMAND =
+            "dumpsys window windows | awk '/Window #/{f=(\$0 ~ /mifreeform\\.freeform}/)} " +
+                    "f&&/mForceHideNonSystemOverlayWindow=true/{n++} END{exit(n>0?0:1)}'"
+
+        // 上一个命令只给布尔，这条给文本：把「带防劫持 flag 的那个窗口」的包名抓出来。
+        // dumpsys 里一个窗口以 "Window #N Window{token u0 包名/Activity}" 开头，
+        // flag 行在同一条记录里稍后才出现，所以用 h 记住当前块的头行再从中截包名。
+        private const val HIDDEN_WINDOW_CULPRIT_COMMAND =
+            "dumpsys window windows | awk '/Window #/{h=\$0} /HIDE_NON_SYSTEM_OVERLAY_WINDOWS/" +
+                    "{if (match(h, /u0 [a-zA-Z0-9._]+\\//)) {print substr(h, RSTART+3, RLENGTH-4)}}' | sort -u"
 
         // 等比例缩放的最小尺寸：允许缩到很小。
         // 原值 400/600 在小屏手机上几乎等于「不能缩小」，这里降到真实的最小可用尺寸。

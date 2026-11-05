@@ -12,7 +12,9 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
+import com.moonlight.freeform.R
 import com.moonlight.freeform.app.MiFreeform
+import com.moonlight.freeform.utils.PermissionUtils
 import kotlin.math.roundToInt
 
 /**
@@ -47,10 +49,22 @@ internal class MiniBallView(
     private var downRawY = 0f
     private var isDragging = false
 
+    // 拖动是高频路径（每秒几十个 MOVE），updateViewLayout 一旦持续失败就会刷日志。
+    // 按手势限流：每次按下只记第一次失败。
+    private var loggedDragFailure = false
+
     /** 显示悬浮球。 */
     @SuppressLint("ClickableViewAccessibility")
     fun show() {
         if (rootView != null) return
+        // 先裁决窗口类型：两个资格都没有时直接放弃，一次 addView 都不调
+        //（原因见 PermissionUtils.pickOverlayWindowType：被拒的请求会毒掉全进程的悬浮窗）。
+        val windowType = overlayWindowType()
+        if (windowType == null) {
+            Log.w(TAG, "miniball_start_rejected no_overlay_permission")
+            PermissionUtils.guideToGrantOverlayPermission(context, context.getString(R.string.scene_miniball))
+            return
+        }
 
         val sp = context.getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
         val sizeDp = sp.getInt(KEY_BALL_SIZE_DP, DEFAULT_SIZE_DP).coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
@@ -92,7 +106,7 @@ internal class MiniBallView(
         val params = WindowManager.LayoutParams(
             sizePx + (8 * density).roundToInt(),
             sizePx + (8 * density).roundToInt(),
-            overlayWindowType(),
+            windowType,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -125,19 +139,25 @@ internal class MiniBallView(
         try {
             windowManager.removeViewImmediate(view)
         } catch (e: Exception) {
+            // rootView 已经置 null，这句失败就再也没人能把窗口摘下来——悬浮球变僵尸窗口，
+            // 并且下次 show() 也认为自己是重复调用而直接 return。
+            Log.w(TAG, "miniball_remove_failed", e)
         }
     }
 
     /** 悬浮球是否正在显示。 */
     fun isShowing(): Boolean = rootView != null
 
-    private fun overlayWindowType(): Int {
+    private fun overlayWindowType(): Int? {
         // 与 Mi-Freeform 既有悬浮窗一致：有overlay权限用 APPLICATION_OVERLAY，
-        // 否则用无障碍服务持有的 ACCESSIBILITY_OVERLAY。
-        return if (android.provider.Settings.canDrawOverlays(context)) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            TYPE_ACCESSIBILITY_OVERLAY
+        // 否则只有在无障碍服务真的开着时才能用 ACCESSIBILITY_OVERLAY。
+        // 旧写法是无条件退回 ACCESSIBILITY_OVERLAY，可无障碍服务没开时那一次 addView 必定被拒，
+        // 正好构成上面说的全进程隐藏，所以这里返回 null 让调用方放弃挂窗。
+        return when {
+            android.provider.Settings.canDrawOverlays(context) ->
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            PermissionUtils.isAccessibilitySettingsOn(context) -> TYPE_ACCESSIBILITY_OVERLAY
+            else -> null
         }
     }
 
@@ -149,6 +169,7 @@ internal class MiniBallView(
                 downRawX = event.rawX
                 downRawY = event.rawY
                 isDragging = false
+                loggedDragFailure = false
                 return true
             }
 
@@ -168,6 +189,10 @@ internal class MiniBallView(
                     try {
                         windowManager.updateViewLayout(rootView, params)
                     } catch (e: Exception) {
+                        if (!loggedDragFailure) {
+                            loggedDragFailure = true
+                            Log.w(TAG, "miniball_drag_layout_failed", e)
+                        }
                     }
                     downRawX = event.rawX
                     downRawY = event.rawY

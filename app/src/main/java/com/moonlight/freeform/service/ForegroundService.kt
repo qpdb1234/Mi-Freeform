@@ -11,18 +11,19 @@ import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
 import android.hardware.SensorManager
 import android.hardware.display.DisplayManager
-import android.net.Uri
 import android.os.IBinder
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.*
-import android.widget.Toast
 import com.moonlight.freeform.R
 import com.moonlight.freeform.app.MiFreeform
 import com.moonlight.freeform.broadcast.StartFreeformReceiver
 import com.moonlight.freeform.ui.floating.ChooseAppFloatingView
 import com.moonlight.freeform.ui.floating.FloatingActivity
+import com.moonlight.freeform.ui.permission.PermissionActivity
+import com.moonlight.freeform.utils.DiagnosticsLog
+import com.moonlight.freeform.utils.PermissionUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -140,6 +141,8 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         sp = getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
         sp.registerOnSharedPreferenceChangeListener(this)
         if (sp.getInt("service_type", ForegroundService.SERVICE_TYPE) == SERVICE_TYPE) {
+            // 供 StartFreeformReceiver 判断「进程是不是被广播冷拉起来的」；见该文件注释。
+            instance = this
             // 与 HookLauncher 的发送方同源（见该文件注释），否则桌面发的广播收不到。
             registerReceiver(
                 startFreeformReceiver,
@@ -177,7 +180,9 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
                             initConfig()
                             try {
                                 chooseAppFloatingView.onScreenRotationChanged(screenRotation)
-                            } catch (e: Exception) {}
+                            } catch (e: Exception) {
+                                Log.w(TAG, "rotation_changed_notify_failed", e)
+                            }
                         }
                     }
                 }
@@ -245,6 +250,27 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         if (notificationPosted) return
 
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        //创建通知渠道
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+                getString(R.string.foreground_notification_name),
+                NotificationManager.IMPORTANCE_LOW
+        )
+        notificationManager.createNotificationChannel(channel)
+
+        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.foreground_notification_text), null))
+        notificationPosted = true
+
+        // 把最近一次失败体现到这条常驻通知上。Shizuku 没绑上、虚拟屏建不起来这类
+        // 「点了没反应」的情况，以前只有一闪而过的 Toast，用户回头根本无从查起。
+        DiagnosticsLog.addListener(diagListener)
+        refreshDiagNotification()
+    }
+
+    /**
+     * 组装常驻通知。渠道已存在，这里只做内容；刷新时复用同一个通知 id。
+     */
+    private fun buildNotification(contentText: String, bigText: String?): Notification {
         //点击常驻通知直接打开侧边栏的应用选择浮层。
         //这里用 getService 而不是 getActivity：以前点通知要先拉起 FloatingActivity，
         //而它会 setContentView + 慢速的 ActivityManager 存活校验后才写 to_show_floating 触发服务，
@@ -254,29 +280,58 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         val builder = Notification.Builder(this.applicationContext,
             CHANNEL_ID
         )
-        //创建通知渠道
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-                getString(R.string.foreground_notification_name),
-                NotificationManager.IMPORTANCE_LOW
-        )
-        notificationManager.createNotificationChannel(channel)
-
         builder.setContentIntent(pendingIntent)
                 .setLargeIcon(BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
                 .setContentTitle(getString(R.string.foreground_notification_title))
-                .setContentText(getString(R.string.foreground_notification_text))
+                .setContentText(contentText)
                 .setSmallIcon(R.drawable.tile_icon)
                 .setWhen(System.currentTimeMillis())
+        if (bigText != null) {
+            builder.setStyle(Notification.BigTextStyle().bigText(bigText))
+        }
+        // 缺悬浮窗权限时多给一个「去授权」按钮。
+        // 为什么由用户点而不是代码直接跳：代码自己跳那一次设置页，在 Android 14 上
+        // 会让本进程之后的所有悬浮窗被系统隐藏（见 PermissionUtils.guideToGrantOverlayPermission），
+        // 而通知按钮是用户主动触发的，点了才跳，不点就不跳。
+        if (DiagnosticsLog.latest(this)?.tag == PermissionUtils.DIAG_TAG_OVERLAY_MISSING) {
+            val grantPendingIntent = PendingIntent.getActivity(
+                this,
+                REQUEST_CODE_GRANT_OVERLAY,
+                Intent(this, PermissionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(
+                R.drawable.ic_settings,
+                getString(R.string.notification_action_grant_overlay),
+                grantPendingIntent
+            )
+        }
         val notification = builder.build()
         notification.flags = Notification.FLAG_ONGOING_EVENT or Notification.FLAG_NO_CLEAR
+        return notification
+    }
 
-        startForeground(3, notification)
-        notificationPosted = true
+    private val diagListener = DiagnosticsLog.Listener { refreshDiagNotification() }
+
+    /**
+     * 用最新的诊断记录刷新常驻通知；没有记录时保持默认文案。
+     */
+    private fun refreshDiagNotification() {
+        if (!notificationPosted) return
+        val text = DiagnosticsLog.latest(this)?.let {
+            getString(R.string.diagnosis_notification_text, it.message)
+        } ?: getString(R.string.foreground_notification_text)
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID, buildNotification(text, text))
+        } catch (e: Exception) {
+            Log.w(TAG, "refresh_diag_notification_failed", e)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        if (instance === this) instance = null
         // onCreate 可能只执行了一部分（service_type 不是前台服务时直接 stopSelf，
         // 或者 Shizuku binder 一直没到），lateinit 成员没初始化就去访问会抛
         // UninitializedPropertyAccessException，销毁时再崩一次会让服务反复重启。
@@ -287,14 +342,19 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         try {
             unregisterReceiver(startFreeformReceiver)
         } catch (e: Exception) {
+            // onCreate 中途退出的时候 receiver 根本没注册过，这里报错是预期的；
+            // 但真泄漏注册时也需要能看见，所以记一行不抛。
+            Log.d(TAG, "unregister startFreeformReceiver skipped", e)
         }
 
         Shizuku.removeBinderReceivedListener(binderReceivedListener)
+        DiagnosticsLog.removeListener(diagListener)
 
         if (rotationWatcherRegistered && ::iWindowManager.isInitialized) {
             try {
                 iWindowManager.removeRotationWatcher(rotationWatcher)
             } catch (e: Exception) {
+                Log.w(TAG, "removeRotationWatcher failed", e)
             }
         }
 
@@ -366,6 +426,7 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
             initConfig()
             if (orientationChanged) {
                 runCatching { chooseAppFloatingView.onScreenRotationChanged(screenRotation) }
+                    .onFailure { Log.w(TAG, "notify_panel_rotation_failed", it) }
             }
         } else if (isShowingFloating) {
             // 只是屏幕尺寸变了（密度没变）：原地改窗口大小与贴边基准即可，不重建、不闪烁。
@@ -435,10 +496,16 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
                             floatView,
                             windowLayoutParams.apply { alpha = config.alpha }
                         )
-                    }catch (e: Exception) {}
+                    }catch (e: Exception) {
+                        Log.w(TAG, "apply_floating_alpha_failed", e)
+                    }
                 }
             }
         }
+        }.onFailure {
+            // 单个 key 处理失败不该带崩进程，但也不能默默吐掉，
+            // 否则「改了设置没反映」这类问题永远查不到原因。
+            Log.w(TAG, "onSharedPreferenceChanged key=$key handled failed", it)
         }
     }
 
@@ -507,19 +574,11 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
                 isShowingFloating = false
             }
         } else {
-            try {
-                Toast.makeText(this, getString(R.string.request_overlay_permission), Toast.LENGTH_LONG).show()
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:${packageName}")
-                )
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(
-                    intent
-                )
-            } catch (e: Exception) {
-                Toast.makeText(this, getString(R.string.request_overlay_permission_fail), Toast.LENGTH_LONG).show()
-            }
+            // 没权限：一次 addView 都不调，只告知（原因见 PermissionUtils.pickOverlayWindowType）。
+            // 旧写法这里会 Toast 后直接跳系统悬浮窗设置页，而 Android 14 上正是这一跳
+            // 会把本进程之后的所有悬浮窗隐藏掉，授权入口改到常驻通知的「去授权」（见 buildNotification）。
+            Log.w(TAG, "handle_start_rejected no_overlay_permission")
+            PermissionUtils.guideToGrantOverlayPermission(this, getString(R.string.scene_handle))
         }
 
     }
@@ -528,7 +587,8 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         try {
             windowManager.removeViewImmediate(floatView)
         } catch (e: Exception) {
-
+            // 把手窗口没拆掉就会变成僵尸窗口（看不见但仍占 surface），必须出声。
+            Log.w(TAG, "removeFloating failed (zombie handle window?)", e)
         }
         isShowingFloating = false
     }
@@ -554,7 +614,7 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
                     alpha = config.alpha
                 }
             )
-        }
+        }.onFailure { Log.w(TAG, "applyFloatingLayout failed", it) }
     }
 
     /**
@@ -691,9 +751,23 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         private const val TAG = "ForegroundService"
         private const val SCROLL = 1
         private const val CHANNEL_ID = "CHANNEL_ID_SUNSHINE_FREEFORM_FOREGROUND"
+        // 常驻通知的 id。以前直接写成字面量 3，刷新诊断内容时容易和 startForeground 的 id 对不上。
+        private const val NOTIFICATION_ID = 3
         const val SERVICE_TYPE = 1
         //常驻通知点击后回投给本服务的 action：直接打开侧边栏，不走 Activity 中转（去延迟）
         const val ACTION_TOGGLE_FLOATING = "com.moonlight.freeform.action.TOGGLE_FLOATING"
+        // 「去授权」按钮的 PendingIntent 请求码：与上面那个（requestCode 0 的 getService）分开，
+        // 否则两个 PendingIntent 会相互覆盖（同一个 id 只保留最后创建的那个）。
+        private const val REQUEST_CODE_GRANT_OVERLAY = 11
+
+        /**
+         * 当前活着的前台服务实例。只在 onCreate 判定「确实是前台服务模式」之后赋值，
+         * 所以它表示的是「把手/侧边栏那套东西已经建起来了」，而不是「Service 对象存在」。
+         */
+        @Volatile
+        private var instance: ForegroundService? = null
+
+        fun isAlive(): Boolean = instance != null
     }
 
     /**

@@ -12,11 +12,11 @@ import com.google.android.material.color.DynamicColors
 import com.moonlight.freeform.BuildConfig
 import com.moonlight.freeform.IControlService
 import com.moonlight.freeform.service.ControlService
+import com.moonlight.freeform.utils.DiagnosticsLog
 import com.tencent.bugly.crashreport.CrashReport
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.Shizuku
 import rikka.sui.Sui
-import java.lang.StringBuilder
 
 /**
  * @author sunshine
@@ -83,10 +83,15 @@ class MiFreeform : Application() {
         const val APP_SETTINGS_NAME = "app_settings"
         private const val SUI_CODE = 0
 
-        private val log = StringBuilder()
-
-        fun addLog(tag: String, functionName: String,  e: Exception) {
-            log.append("$tag,$functionName:${e.message}")
+        /**
+         * 把一次失败记进可回放的诊断记录。
+         *
+         * 以前这里只往一个从不被读取的 StringBuilder 里追加，等于没记；
+         * 现在同时写进 DiagnosticsLog（落盘、重启后仍在）和 logcat。
+         */
+        fun addLog(tag: String, functionName: String, e: Exception) {
+            val context = me ?: return
+            DiagnosticsLog.record(context, tag, "$functionName: ${e.javaClass.simpleName}: ${e.message}")
         }
 
         init {

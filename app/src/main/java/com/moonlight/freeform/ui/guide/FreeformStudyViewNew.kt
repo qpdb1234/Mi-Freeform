@@ -3,15 +3,14 @@ package com.moonlight.freeform.ui.guide
 import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
-import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.SurfaceTexture
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.hardware.input.IInputManager
-import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import android.view.*
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -20,6 +19,8 @@ import com.moonlight.freeform.app.MiFreeform
 import com.moonlight.freeform.bean.MotionEventBean
 import com.moonlight.freeform.databinding.ViewFreeformBinding
 import com.moonlight.freeform.ui.freeform.*
+import com.moonlight.freeform.utils.DiagnosticsLog
+import com.moonlight.freeform.utils.PermissionUtils
 import kotlinx.coroutines.*
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
@@ -69,6 +70,10 @@ class FreeformStudyViewNew(
      * 小窗就留在屏幕上、虚拟屏也停在全屏尺寸，下次打开应用画面会比小窗小一圈。
      */
     private var isDestroyed = false
+
+    // 窗口到底有没有真正挂在 WindowManager 上。没挂上去时 removeViewImmediate 必抛，
+    // 补了日志之后那条异常会被当成真故障，所以摘窗前必须看这个标记。
+    private var windowAttached = false
 
     //是否处于后台挂起状态
     private var isBackstage = false
@@ -195,7 +200,10 @@ class FreeformStudyViewNew(
                 if (taskInfo.baseActivity!!.packageName == config.packageName && userId == config.userId) {
                     taskId = taskInfo.taskId
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                //部分 ROM 上 RunningTaskInfo 没有 userId 字段，拿不到就不认这个任务，不是故障
+                Log.w(TAG, "guide_read_task_userId_failed pkg=${config.packageName}", e)
+            }
         }
 
         override fun onTaskRequestedOrientationChanged(tId: Int, requestedOrientation: Int) {
@@ -310,13 +318,19 @@ class FreeformStudyViewNew(
                 activityTaskManager?.registerTaskStackListener(taskStackListener)
             }
             activityManager = IActivityManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("activity")))
-        }catch (e: Exception) {}
+        }catch (e: Exception) {
+            Log.w(TAG, "guide_init_activity_task_service_failed", e)
+        }
         try {
             inputManager = IInputManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("input")))
-        }catch (e: Exception) {}
+        }catch (e: Exception) {
+            Log.w(TAG, "guide_init_input_service_failed", e)
+        }
         try {
             iWindowManager = IWindowManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("window")))
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "guide_init_window_service_failed", e)
+        }
     }
 
     private fun initConfig() {
@@ -471,8 +485,23 @@ class FreeformStudyViewNew(
                         height = freeformWidth + windowChromeHeight
                     }
                 }
+                //先裁决再开窗，与 FreeformView.showWindow 同一个理由：未授权 / 无障碍服务没开时
+                //那次盲发的 addView 必定被拒，而一次被拒的请求就能把本进程之后所有非系统悬浮窗
+                //永久隐藏掉（HyperOS 14 实测，见 PermissionUtils.pickOverlayWindowType）。
+                val overlayAllowed = Settings.canDrawOverlays(context)
+                val accessibilityOverlayUsable = PermissionUtils.isAccessibilitySettingsOn(context)
+                if (!overlayAllowed && !accessibilityOverlayUsable) {
+                    Log.w(TAG, "guide_start_rejected no_overlay_permission pkg=${config.packageName}")
+                    destroy()
+                    askForOverlayPermission(context.getString(R.string.scene_study, config.packageName))
+                    return
+                }
                 windowLayoutParams.apply {
-                    type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                    type = if (accessibilityOverlayUsable) {
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                    } else {
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    }
                     flags =
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -504,37 +533,61 @@ class FreeformStudyViewNew(
 
                 try {
                     windowManager.addView(binding.root, windowLayoutParams)
+                    windowAttached = true
                 } catch (e: Exception) {
+                    Log.w(TAG, "guide_add_view_failed pkg=${config.packageName} type=${windowLayoutParams.type}", e)
+                    windowAttached = false
                     try {
                         windowManager.removeViewImmediate(binding.root)
-                    } catch (e: Exception) {}
+                    } catch (removeException: Exception) {
+                        Log.w(TAG, "guide_remove_half_attached_view_failed pkg=${config.packageName}", removeException)
+                    }
 
-                    if (Settings.canDrawOverlays(context)) {
-                        windowManager.addView(binding.root, windowLayoutParams.apply {
-                            type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                        })
-                    } else {
-                        destroy()
+                    if (overlayAllowed) {
+                        //无障碍类型挂不上时退回普通悬浮窗；这一步只有持有权限时才是合法请求
                         try {
-                            Toast.makeText(context, context.getString(R.string.request_overlay_permission), Toast.LENGTH_LONG).show()
-                            val intent = Intent(
-                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:${context.packageName}")
+                            windowManager.addView(binding.root, windowLayoutParams.apply {
+                                type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            })
+                            windowAttached = true
+                        } catch (fallbackException: Exception) {
+                            Log.e(TAG, "guide_add_view_fallback_failed pkg=${config.packageName}", fallbackException)
+                            DiagnosticsLog.recordRes(
+                                context, "overlay_rejected",
+                                R.string.diag_study_both_types, config.packageName, fallbackException.javaClass.simpleName
                             )
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(
-                                intent
-                            )
-                        } catch (e: Exception) {
-                            Toast.makeText(context, context.getString(R.string.request_overlay_permission_fail), Toast.LENGTH_LONG).show()
+                            destroy()
                         }
+                    } else {
+                        //没权限时再试一次就是第二次「被拒请求」，不能试，直接拆干净。
+                        Log.e(TAG, "guide_add_view_rejected_no_fallback pkg=${config.packageName}", e)
+                        DiagnosticsLog.recordRes(
+                            context, "overlay_rejected",
+                            R.string.diag_study_no_fallback, config.packageName
+                        )
+                        destroy()
                     }
                 }
             }
         }
         else {
+            Log.w(TAG, "guide_start_rejected shizuku not bound pkg=${config.packageName}")
+            DiagnosticsLog.recordRes(
+                context, "shizuku_unbound", R.string.service_not_running_pkg, config.packageName
+            )
             Toast.makeText(context, context.getString(R.string.service_not_running), Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * 告知用户缺悬浮窗权限，只告知不跳系统设置页。
+     *
+     * 以前这里会 `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)`，而在 HyperOS 14 上
+     * 拒绝分支里的这一跳就是把本进程之后所有悬浮窗变得「看不见」的那一下
+     *（实测与原理见 [PermissionUtils.guideToGrantOverlayPermission]）。
+     */
+    private fun askForOverlayPermission(scene: String) {
+        PermissionUtils.guideToGrantOverlayPermission(context, scene)
     }
 
     /**
@@ -550,7 +603,9 @@ class FreeformStudyViewNew(
             val noAnimFlag: Int = noAnim.getInt(windowLayoutParams)
             privateFlagsValue = privateFlagsValue or noAnimFlag
             privateFlags.setInt(windowLayoutParams, privateFlagsValue)
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Log.w(TAG, "disable_window_animation_failed", e)
+        }
     }
 
     private fun setWindowEnableUpdateAnimation() {
@@ -563,7 +618,9 @@ class FreeformStudyViewNew(
             val noAnimFlag: Int = noAnim.getInt(windowLayoutParams)
             privateFlagsValue = privateFlagsValue and noAnimFlag.inv()
             privateFlags.setInt(windowLayoutParams, privateFlagsValue)
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Log.w(TAG, "enable_window_animation_failed", e)
+        }
     }
 
     private fun onFreeFormRotationChanged() {
@@ -668,8 +725,20 @@ class FreeformStudyViewNew(
     }
 
     override fun moveToFirst() {
-        windowManager.removeViewImmediate(binding.root)
-        windowManager.addView(binding.root, windowLayoutParams)
+        if (windowAttached) {
+            try {
+                windowManager.removeViewImmediate(binding.root)
+            } catch (e: Exception) {
+                Log.w(TAG, "guide_remove_view_failed(toFront) pkg=${config.packageName}", e)
+            }
+            windowAttached = false
+        }
+        try {
+            windowManager.addView(binding.root, windowLayoutParams)
+            windowAttached = true
+        } catch (e: Exception) {
+            Log.w(TAG, "guide_add_view_failed(toFront) pkg=${config.packageName}", e)
+        }
         FreeformHelper.addFreeformToSet(this)
     }
 
@@ -677,7 +746,14 @@ class FreeformStudyViewNew(
      * 隐藏小窗到后台
      */
     private fun toBackstage() {
-        windowManager.removeViewImmediate(binding.root)
+        if (windowAttached) {
+            try {
+                windowManager.removeViewImmediate(binding.root)
+            } catch (e: Exception) {
+                Log.w(TAG, "guide_remove_view_failed(toBackstage) pkg=${config.packageName}", e)
+            }
+            windowAttached = false
+        }
         FreeformHelper.removeFreeformFromSet(this)
         FreeformHelper.addMiniFreeformToSet(this)
         isBackstage = true
@@ -687,7 +763,12 @@ class FreeformStudyViewNew(
      * 从后台恢复
      */
     override fun fromBackstage() {
-        windowManager.addView(binding.root, windowLayoutParams)
+        try {
+            windowManager.addView(binding.root, windowLayoutParams)
+            windowAttached = true
+        } catch (e: Exception) {
+            Log.w(TAG, "guide_add_view_failed(fromBackstage) pkg=${config.packageName}", e)
+        }
         FreeformHelper.removeMiniFreeformFromSet(this)
         FreeformHelper.addFreeformToSet(this)
         isBackstage = false
@@ -1042,24 +1123,45 @@ class FreeformStudyViewNew(
 
         isDestroy = true
         isDestroyed = true
-        try {
-            windowManager.removeViewImmediate(binding.root)
-        }catch (e: Exception) { }
+        // 只摘真正挂上去的窗口：没挂上时这句必抛，抛了也不能当真故障
+        if (windowAttached) {
+            windowAttached = false
+            try {
+                windowManager.removeViewImmediate(binding.root)
+            }catch (e: Exception) {
+                Log.e(TAG, "guide_remove_view_failed - zombie window left pkg=${config.packageName}", e)
+                DiagnosticsLog.recordRes(
+                    context, "zombie_window",
+                    R.string.diag_study_zombie, config.packageName, e.javaClass.simpleName
+                )
+            }
+        }
 
         try {
             virtualDisplay.surface.release()
             virtualDisplay.release()
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            //虚拟屏没释放就是持续占内存与 GPU 的泄漏源
+            Log.e(TAG, "guide_release_virtual_display_failed pkg=${config.packageName}", e)
+            DiagnosticsLog.recordRes(
+                context, "display_leak",
+                R.string.diag_study_display_leak, config.packageName, e.javaClass.simpleName
+            )
+        }
 
         try {
             //移除屏幕监听
             displayManager.unregisterDisplayListener(displayListener)
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "guide_unregister_display_listener_failed pkg=${config.packageName}", e)
+        }
 
 
         try {
             screenListener.unregisterListener()
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "guide_unregister_screen_listener_failed pkg=${config.packageName}", e)
+        }
 
         //移除小窗管理
         //两个集合都要清，否则侧边栏会留下一个点不开的幽灵条目。
@@ -1069,7 +1171,9 @@ class FreeformStudyViewNew(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 activityTaskManager?.unregisterTaskStackListener(taskStackListener)
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.w(TAG, "guide_unregister_task_stack_listener_failed pkg=${config.packageName}", e)
+            }
         }
     }
 

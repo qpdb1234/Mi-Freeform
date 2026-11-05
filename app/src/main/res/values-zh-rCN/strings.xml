@@ -16,6 +16,8 @@
 
     <!--FreeformView-->
     <string name="service_not_running">Shizuku/Sui服务没有运行，你是否为米窗授权了Shizuku/Sui？</string>
+    <!-- 与 values/strings.xml 同名条目：括号形式由各语言资源自己决定，代码里不拼全角括号 -->
+    <string name="service_not_running_pkg">Shizuku/Sui服务没有运行，你是否为米窗授权了Shizuku/Sui？（%1$s）</string>
     <string name="overlay_no_permission">没有悬浮窗权限</string>
     <string name="app_is_running">该应用已经处于小窗模式</string>
     <string name="create_display_fail">创建屏幕失败，这表示米窗可能不能在该ROM上运行，请联系开发者</string>
@@ -39,6 +41,36 @@
     <!--ChooseAppFloatingView-->
     <string name="request_overlay_permission_fail">无法跳转到设置界面，请手动前往设置开启米窗的“显示在其他应用界面的上层”权限</string>
     <string name="request_overlay_permission">请选择米窗开启“显示在其他应用界面的上层”权限</string>
+    <string name="request_overlay_permission_via_app">请打开米窗，在权限页里开启悬浮窗权限</string>
+    <string name="window_hidden_by_system">小窗被系统隐藏了，先重启米窗；仍不行就重启手机</string>
+    <string name="window_hidden_by_app">%1$s 自己要求隐藏悬浮窗，退出它的界面即可恢复</string>
+    <!-- DiagnosticsLog 记录正文：这一句会原样出现在常驻通知里（F3），所以必须走资源，不能写在代码里 -->
+    <string name="diag_start_freeform_rejected">开小窗请求缺少 packageName/activityName，已忽略</string>
+    <string name="diag_receiver_cold_start">进程是被开小窗请求拉起来的（%1$s），已顺带启动前台服务</string>
+    <string name="diag_receiver_bind_timeout">开小窗请求已收到，但等了 8 秒仍未连上 Shizuku 服务（%1$s）</string>
+    <string name="diag_create_display_failed">%1$s 虚拟屏创建失败（%2$dx%3$d，%4$ddpi）：%5$s</string>
+    <string name="diag_overlay_rejected_both">%1$s 的悬浮窗被系统拒绝，小窗开不起来（两种窗口类型都失败）</string>
+    <string name="diag_overlay_rejected_no_fallback">%1$s 的小窗窗口被系统拒绝，且没有悬浮窗权限可以退回普通悬浮窗</string>
+    <string name="diag_window_hidden_by_app">%1$s 自己要求系统隐藏所有悬浮窗（Android 12+ 的防劫持机制），所以它没法显示在小窗里；退出那个应用的界面就会恢复，不需要重启米窗或手机</string>
+    <string name="diag_window_hidden">%1$s 的小窗被系统隐藏了（窗口在、但系统不画），已自动关闭以释放虚拟屏；先重启米窗通常就能恢复，若重启后仍不行就重启手机</string>
+    <string name="diag_bring_to_front_failed">%1$s 的小窗置顶失败：%2$s</string>
+    <string name="diag_resume_attach_failed">%1$s 的小窗从后台恢复时挂不上：%2$s</string>
+    <string name="diag_zombie_window">%1$s 的悬浮窗未能从系统摘除，会留在屏幕上占内存：%2$s</string>
+    <string name="diag_study_both_types">%1$s 的练习小窗两种窗口类型都挂不上：%2$s</string>
+    <string name="diag_study_no_fallback">%1$s 的练习小窗挂不上，且没有悬浮窗权限可以退回普通悬浮窗</string>
+    <string name="diag_study_zombie">%1$s 的练习小窗没能从屏幕上摘下来，会占着内存：%2$s</string>
+    <string name="diag_study_display_leak">%1$s 的练习小窗虚拟屏没能释放：%2$s</string>
+    <string name="diag_panel_attach_exception">选择应用面板挂不上窗口：%1$s</string>
+    <string name="diag_overlay_missing">缺少悬浮窗权限（显示在其他应用的上层）：%1$s。点常驻通知上的「去授权」，在权限页里为米窗开启悬浮窗权限</string>
+    <string name="diag_overlay_missing_no_notification">缺少悬浮窗权限（显示在其他应用的上层）：%1$s。米窗的通知已被关闭，通知上没有可点的按钮：请从桌面打开米窗，在权限申请页里开启悬浮窗权限</string>
+    <!-- 场景描述，填进 diag_overlay_missing -->
+    <string name="scene_handle">侧边栏把手挂不出来</string>
+    <string name="scene_open_panel_failed">打开选择应用面板失败</string>
+    <string name="scene_panel_attach_failed">选择应用面板挂不上窗口</string>
+    <string name="scene_all_apps_failed">打开全部应用列表失败</string>
+    <string name="scene_freeform_failed">%1$s 开小窗失败</string>
+    <string name="scene_miniball">悬浮球挂不出来</string>
+    <string name="scene_study">%1$s 的练习小窗挂不出来</string>
 
     <!--ChooseAppsActivity-->
     <string name="label_floating_apps">侧边栏快捷应用选择</string>
@@ -178,6 +210,8 @@
     <string name="foreground_notification_name">前台服务通知</string>
     <string name="foreground_notification_title">米窗正在后台运行</string>
     <string name="foreground_notification_text">点击可打开侧边栏</string>
+    <string name="diagnosis_notification_text">最近一次失败：%1$s</string>
+    <string name="notification_action_grant_overlay">去授权</string>
 
 
     <!--RecentActivity-->

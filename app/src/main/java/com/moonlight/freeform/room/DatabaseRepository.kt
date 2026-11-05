@@ -1,6 +1,7 @@
 package com.moonlight.freeform.room
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.LiveData
 import com.moonlight.freeform.room.MyDatabase.Companion.getDatabase
 import kotlinx.coroutines.flow.Flow
@@ -18,7 +19,10 @@ class DatabaseRepository(context: Context) {
     fun insertFreeForm(packageName: String, userId: Int) {
         try {
             freeFormAppsDao.insert(packageName, userId)
-        }catch (e: Exception) { }
+        }catch (e: Exception) {
+            // 插入失败意味着用户在侧边栏里选完应用后条目莫名消失，不能不响。
+            Log.w(TAG, "insert_freeform_failed pkg=$packageName user=$userId", e)
+        }
     }
 
     fun deleteFreeForm(packageName: String, userId: Int) {
@@ -57,7 +61,9 @@ class DatabaseRepository(context: Context) {
     fun insertFreeFormWithSortNum(sortNum: Int, packageName: String, userId: Int) {
         try {
             freeFormAppsDao.insertWithSortNum(sortNum, packageName, userId)
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Log.w(TAG, "insert_freeform_with_sort_failed sort=$sortNum pkg=$packageName user=$userId", e)
+        }
     }
 
     fun getAllNotificationEntitiesSync(): List<NotificationAppsEntity> {
@@ -67,7 +73,9 @@ class DatabaseRepository(context: Context) {
     fun insertNotificationWithUserId(packageName: String, userId: Int) {
         try {
             notificationAppsDao.insertWithUserId(packageName, userId)
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Log.w(TAG, "insert_notification_with_user_failed pkg=$packageName user=$userId", e)
+        }
     }
 
     fun deleteAllFreeForm() {
@@ -81,7 +89,9 @@ class DatabaseRepository(context: Context) {
     fun insertNotification(packageName: String, userId: Int) {
         try {
             notificationAppsDao.insert(packageName, userId)
-        }catch (e: Exception) {}
+        }catch (e: Exception) {
+            Log.w(TAG, "insert_notification_failed pkg=$packageName user=$userId", e)
+        }
 
     }
 
@@ -105,5 +115,9 @@ class DatabaseRepository(context: Context) {
         val database = getDatabase(context)
         freeFormAppsDao = database.freeFormAppsDao
         notificationAppsDao = database.notificationAppsDao
+    }
+
+    companion object {
+        private const val TAG = "DatabaseRepository"
     }
 }

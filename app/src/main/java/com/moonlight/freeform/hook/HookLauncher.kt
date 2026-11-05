@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.*
 import com.moonlight.freeform.R
 import com.moonlight.freeform.app.MiFreeform
+import com.moonlight.freeform.broadcast.StartFreeformReceiver
 import com.moonlight.freeform.hook.utils.XLog
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
@@ -62,8 +63,19 @@ class HookLauncher : IXposedHookLoadPackage {
             menuOptionView.setOnClickListener {
                 // 广播 action 与接收方所在包都取自 BuildConfig：
                 // 不能写死字符串，否则改包名后会发到错误的包去。
+                //
+                // 必须写显式组件，不能只靠 setPackage：
+                // 隐式广播（只有 action + setPackage）在 Android 8 以后**不会**投给 manifest
+                // 里静态声明的接收器，实测连 --include-stopped-packages 也救不回来。
+                // 于是「进程还活着」时它靠 ForegroundService 运行时注册的那个接收器才生效，
+                // 进程一旦被划掉/force-stop，最近任务里点米窗就是彻底静默无反应（实测：
+                // 零进程、零窗口、零日志）。改成显式组件后同一发广播能把进程从零拉起来。
+                // 类名用 StartFreeformReceiver::class.java.name，这样重命名 Java 包时不会指错。
                 val intent = Intent("${MiFreeform.PACKAGE_NAME}.start_freeform").apply {
-                    setPackage(MiFreeform.PACKAGE_NAME)
+                    component = ComponentName(
+                        MiFreeform.PACKAGE_NAME,
+                        StartFreeformReceiver::class.java.name
+                    )
                     putExtra("packageName", topComponent.packageName)
                     putExtra("activityName", topComponent.className)
                     putExtra("userId", userId)

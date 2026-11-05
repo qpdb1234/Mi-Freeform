@@ -13,4 +13,6 @@ interface IControlService {
     void touch(in MotionEventBean motionEventBean);
     boolean moveStack(int displayId);
     boolean execShell(String command, boolean useRoot);
+    // execShell 只回传退出码；窗口被强制隐藏时要报出「是哪个应用要求的」，需要命令的文本输出。
+    String execShellText(String command, boolean useRoot);
 }
