@@ -15,6 +15,10 @@ data class FreeformConfig(
     var freeformDpi: Int = 1,
     //Width-to-height ratio, default 9:16
     var widthHeightRatio: Float = 10f / 16f,
+    //Drag-to-scale mode for the two bottom-bar dots: 0=proportional, 1=free (see FreeformView.SCALE_MODE_*)
+    var dotScaleMode: Int = 1,
+    //Drag-to-scale mode for the bottom-left/right corners: 0=proportional, 1=free (see FreeformView.SCALE_MODE_*)
+    var cornerScaleMode: Int = 0,
     //Use Shizuku/Sui to stop the freeform from escaping to fullscreen
     var useSuiRefuseToFullScreen: Boolean = false,
     //Change the scale ratio on screen rotation

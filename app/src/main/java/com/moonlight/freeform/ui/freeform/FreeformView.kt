@@ -336,6 +336,37 @@ class FreeformView(
 
     //Added: manually adjust the freeform window orientation q220904.7
     /**
+     * Free (independent) resize shared by the bottom-bar dots and the bottom corners.
+     *
+     * Width follows [dw] and height follows [dh], each clamped on its own, so the window can take any
+     * aspect instead of being locked to the ratio. The shared [FreeformConfig.widthHeightRatio] is then
+     * updated to the new width/height so later "width = height * ratio" derivations (rotation, clamping)
+     * keep the shape the user just set instead of snapping it back.
+     */
+    private fun handleFreeScale(dw: Float, dh: Float) {
+        val tempWidth = freeformWidth + dw
+        val tempHeight = freeformHeight + dh
+        if (tempHeight > MIN_HEIGHT && tempHeight <= config.maxHeight && tempWidth > MIN_WIDTH && tempWidth < realScreenWidth) {
+            freeformHeight = tempHeight.roundToInt()
+            freeformWidth = tempWidth.roundToInt()
+            config.widthHeightRatio = freeformWidth.toFloat() / freeformHeight.toFloat()
+        }
+        //Commit the real window size at a throttled rate, not on every ACTION_MOVE.
+        //A full updateViewLayout on a large overlay window costs more than one frame to lay out, so doing
+        //it per-move is what made the freeform window jitter -- and the cost grows with the window, so it
+        //only became visible once the window was dragged very large. Cap commits to ~30fps (a small
+        //pixel step also skips no-op moves). handleUpEvent -> notifyWindowScale still commits the exact
+        //final size once on ACTION_UP, so the throttling only affects the live drag, never the resting size.
+        //The window simply holds its last committed size between commits (no distortion, no edge clipping).
+        val moved = freeformWidth != beforeScaleWidth || freeformHeight != beforeScaleHeight
+        if (moved && commitWindowScaleThrottled()) {
+            beforeScaleWidth = freeformWidth
+            beforeScaleHeight = freeformHeight
+            Log.d(TAG, "free_scale_commit pkg=${config.packageName} w=$freeformWidth h=$freeformHeight")
+        }
+    }
+
+    /**
      * Bottom-bar left dot: hold and slide to scale proportionally.
      *
      * Behaves exactly like holding the left edge to scale ([handleScaleLeft]),
@@ -344,6 +375,11 @@ class FreeformView(
      * the width is always computed from the height by the freeform aspect ratio (the horizontal component doesn't change width separately), so rotation round-trips won't distort.
      */
     private fun handleDotScaleLeft(dx: Float, dy: Float) {
+        //Free mode: the dot tracks both axes independently (drag left widens, drag down grows).
+        if (config.dotScaleMode == SCALE_MODE_FREE) {
+            handleFreeScale(-dx, dy)
+            return
+        }
         val tempHeight = freeformHeight + dy
         //Width is always computed from the height by a fixed ratio (same as edge-held scaling), otherwise dragging diagonally
         //silently skews the aspect ratio, and recomputing width by that ratio during rotation would turn the user's freeform window into a different size.
@@ -351,7 +387,9 @@ class FreeformView(
         if (tempHeight > MIN_HEIGHT && tempHeight <= config.maxHeight && tempWidth > MIN_WIDTH && tempWidth < realScreenWidth) {
             freeformHeight = tempHeight.roundToInt()
             freeformWidth = tempWidth
-            notifyWindowScale()
+            //Throttled, same reason as the free path: per-move window commits jitter on large windows;
+            //handleUpEvent -> notifyWindowScale still commits the exact size on release.
+            commitWindowScaleThrottled()
         }
     }
 
@@ -362,13 +400,20 @@ class FreeformView(
      * The right dot is at the window's bottom-right corner: pull down = enlarge, push up = shrink; width is likewise computed from the height by ratio.
      */
     private fun handleDotScaleRight(dx: Float, dy: Float) {
+        //Free mode: the dot tracks both axes independently (drag right widens, drag down grows).
+        if (config.dotScaleMode == SCALE_MODE_FREE) {
+            handleFreeScale(dx, dy)
+            return
+        }
         val tempHeight = freeformHeight + dy
         //Same as handleDotScaleLeft: width is computed from the height, keeping the aspect ratio
         val tempWidth = (tempHeight * config.widthHeightRatio).roundToInt()
         if (tempHeight > MIN_HEIGHT && tempHeight <= config.maxHeight && tempWidth > MIN_WIDTH && tempWidth < realScreenWidth) {
             freeformHeight = tempHeight.roundToInt()
             freeformWidth = tempWidth
-            notifyWindowScale()
+            //Throttled, same reason as the free path: per-move window commits jitter on large windows;
+            //handleUpEvent -> notifyWindowScale still commits the exact size on release.
+            commitWindowScaleThrottled()
         }
     }
 
@@ -479,6 +524,9 @@ class FreeformView(
 
         config.useSuiRefuseToFullScreen = viewModel.getBooleanSp("use_sui_refuse_to_fullscreen", false)
         config.changeDpi = viewModel.getBooleanSp("change_dpi", false)
+        //Drag-to-scale modes: dots default to free, corners default to proportional (matches settings.xml defaultValue).
+        config.dotScaleMode = viewModel.getIntSp("freeform_dot_scale_mode", SCALE_MODE_FREE)
+        config.cornerScaleMode = viewModel.getIntSp("freeform_corner_scale_mode", SCALE_MODE_PROPORTIONAL)
         config.bottomDoubleTapAction = TopBarAction.getBottomDoubleTapAction(
             context.getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
         )
@@ -1260,6 +1308,21 @@ class FreeformView(
         updateWindowSize(false)
     }
 
+    /**
+     * Throttled variant of [notifyWindowScale] for live drags: a full updateViewLayout on a large
+     * overlay window costs more than one frame, so committing on every ACTION_MOVE drops frames and
+     * the window visibly jitters (worse the larger it gets). Commits are capped to ~30fps; between
+     * commits the window simply holds its last committed size. ACTION_UP always calls the exact
+     * [notifyWindowScale] so the resting size is never quantized. Returns true when the commit ran.
+     */
+    private fun commitWindowScaleThrottled(): Boolean {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastScaleCommitUptimeMs < SCALE_COMMIT_MIN_INTERVAL_MS) return false
+        lastScaleCommitUptimeMs = now
+        notifyWindowScale()
+        return true
+    }
+
     //Coordinates at press time
     private var lastX = -1f
     private var lastY = -1f
@@ -1295,6 +1358,8 @@ class FreeformView(
             //Left/right dot: press only records the starting point; scaling is handled in handleMoveEvent per-frame incrementally
             R.id.leftView, R.id.rightView -> {
                 beforeScaleHeight = freeformHeight
+                beforeScaleWidth = freeformWidth
+                lastScaleCommitUptimeMs = 0L
             }
             R.id.middleView -> {
                 middleGestureDetector.onTouchEvent(event)
@@ -1302,6 +1367,8 @@ class FreeformView(
 
             R.id.leftScale, R.id.rightScale -> {
                 beforeScaleHeight = freeformHeight
+                beforeScaleWidth = freeformWidth
+                lastScaleCommitUptimeMs = 0L
             }
             //Top bar: same dispatch logic as the bottom bar
             R.id.topBarMinimize -> {
@@ -1417,12 +1484,23 @@ class FreeformView(
     //The ratio of this pass relative to before scaling
     private var mScale = 1f
     private var beforeScaleHeight = freeformHeight
+    //Baseline size at the last real window-size commit during a free-mode drag; a commit only happens
+    //when the size changed and the throttle interval elapsed (see handleFreeScale), the exact final
+    //size is committed on ACTION_UP.
+    private var beforeScaleWidth = freeformWidth
+    //Uptime of the last throttled window-size commit during a free-mode drag.
+    private var lastScaleCommitUptimeMs = 0L
 
     /**
      * Scale handling
      * Optimization: try a smoother scaling animation q220904.8
      */
     private fun handleScaleLeft(dx: Float, dy: Float) {
+        //Free mode: bottom-left corner tracks width (drag left widens) and height (drag down grows) independently.
+        if (config.cornerScaleMode == SCALE_MODE_FREE) {
+            handleFreeScale(-dx, dy)
+            return
+        }
         //Shrink
         if (dx > 0 && dy < 0) {
             val tempHeight = freeformHeight + dy
@@ -1435,8 +1513,12 @@ class FreeformView(
                 freeformWidth = (freeformHeight * config.widthHeightRatio).roundToInt()
 
                 if (freeformHeight > beforeScaleHeight) {
-                    beforeScaleHeight = freeformHeight
-                    notifyWindowScale()
+                    //Throttle the enlarge commits: lifting the baseline only when the commit actually
+                    //ran keeps the visual-shrink branch below consistent with the last committed
+                    //window size (root.scale is relative to that window, so it never clips or desyncs).
+                    if (commitWindowScaleThrottled()) {
+                        beforeScaleHeight = freeformHeight
+                    }
                 } else {
                     mScale = freeformHeight / beforeScaleHeight.toFloat()
                     binding.root.scaleX = mScale
@@ -1455,8 +1537,12 @@ class FreeformView(
                 freeformWidth = (freeformHeight * config.widthHeightRatio).roundToInt()
 
                 if (freeformHeight > beforeScaleHeight) {
-                    beforeScaleHeight = freeformHeight
-                    notifyWindowScale()
+                    //Throttle the enlarge commits: lifting the baseline only when the commit actually
+                    //ran keeps the visual-shrink branch below consistent with the last committed
+                    //window size (root.scale is relative to that window, so it never clips or desyncs).
+                    if (commitWindowScaleThrottled()) {
+                        beforeScaleHeight = freeformHeight
+                    }
                 } else {
                     mScale = freeformHeight / beforeScaleHeight.toFloat()
                     binding.root.scaleX = mScale
@@ -1470,6 +1556,11 @@ class FreeformView(
      * Scale handling
      */
     private fun handleScaleRight(dx: Float, dy: Float) {
+        //Free mode: bottom-right corner tracks width (drag right widens) and height (drag down grows) independently.
+        if (config.cornerScaleMode == SCALE_MODE_FREE) {
+            handleFreeScale(dx, dy)
+            return
+        }
         //Shrink
         if (dx < 0 && dy < 0) {
             val tempHeight = freeformHeight + dy
@@ -1481,8 +1572,12 @@ class FreeformView(
                 freeformWidth = (freeformHeight * config.widthHeightRatio).roundToInt()
 
                 if (freeformHeight > beforeScaleHeight) {
-                    beforeScaleHeight = freeformHeight
-                    notifyWindowScale()
+                    //Throttle the enlarge commits: lifting the baseline only when the commit actually
+                    //ran keeps the visual-shrink branch below consistent with the last committed
+                    //window size (root.scale is relative to that window, so it never clips or desyncs).
+                    if (commitWindowScaleThrottled()) {
+                        beforeScaleHeight = freeformHeight
+                    }
                 } else {
                     mScale = freeformHeight / beforeScaleHeight.toFloat()
                     binding.root.scaleX = mScale
@@ -1501,8 +1596,12 @@ class FreeformView(
                 freeformWidth = (freeformHeight * config.widthHeightRatio).roundToInt()
 
                 if (freeformHeight > beforeScaleHeight) {
-                    beforeScaleHeight = freeformHeight
-                    notifyWindowScale()
+                    //Throttle the enlarge commits: lifting the baseline only when the commit actually
+                    //ran keeps the visual-shrink branch below consistent with the last committed
+                    //window size (root.scale is relative to that window, so it never clips or desyncs).
+                    if (commitWindowScaleThrottled()) {
+                        beforeScaleHeight = freeformHeight
+                    }
                 } else {
                     mScale = freeformHeight / beforeScaleHeight.toFloat()
                     binding.root.scaleX = mScale
@@ -1829,6 +1928,9 @@ class FreeformView(
         }
 
         override fun onTaskDisplayChanged(tId: Int, newDisplayId: Int) {
+            //Diagnostic for the "tap a link/play escapes to fullscreen" and "refuse-toggle leaves it frozen" reports:
+            //log every callback with the tracked task/display so an interactive repro shows which guard trips and which branch runs.
+            Log.i(TAG, "task_display_changed pkg=${config.packageName} tId=$tId trackedTaskId=$taskId newDisplayId=$newDisplayId virtualDisplayId=${virtualDisplay.display.displayId} defaultDisplay=${Display.DEFAULT_DISPLAY} isDestroy=$isDestroy refuseFullScreen=${config.useSuiRefuseToFullScreen}")
             if (taskId == -1 && newDisplayId == virtualDisplay.display.displayId) taskId = tId
 
             //Not our task, or the task is still inside our own virtual display—nothing to handle either way
@@ -1838,11 +1940,15 @@ class FreeformView(
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && config.useSuiRefuseToFullScreen) {
                 //The user enabled "use Shizuku/Sui to stop apps from leaving the freeform window into fullscreen", so pull the task back into the freeform window
-                activityTaskManager?.moveRootTaskToDisplay(tId, virtualDisplay.display.displayId)
+                val pulled = runCatching {
+                    activityTaskManager?.moveRootTaskToDisplay(tId, virtualDisplay.display.displayId)
+                }
+                Log.i(TAG, "task_display_pull_back pkg=${config.packageName} tId=$tId result=${pulled.getOrNull()}", pulled.exceptionOrNull())
             } else {
                 //The task went to fullscreen (the user re-entered this app from the launcher, a notification, etc.).
                 //At this point the old freeform window's virtual display has no content; collapsing and restoring it would turn it into
                 //a transparent freeform window that can neither be tapped nor drawn, so we just clear the old window directly.
+                Log.i(TAG, "task_display_escape_destroy pkg=${config.packageName} tId=$tId (refuse-toggle=${config.useSuiRefuseToFullScreen})")
                 scope.launch(Dispatchers.Main) {
                     destroy()
                 }
@@ -1920,6 +2026,15 @@ class FreeformView(
         // The original 400/600 was effectively "can't shrink" on small-screen phones, so lower it to the real minimum usable size.
         private const val MIN_WIDTH = 200
         private const val MIN_HEIGHT = 300
+
+        // Drag-to-scale mode; the numeric order matches @array/freeform_scale_mode_value in arrays.xml.
+        // Proportional keeps width = height * ratio; free changes width and height independently.
+        const val SCALE_MODE_PROPORTIONAL = 0
+        const val SCALE_MODE_FREE = 1
+
+        // Minimum interval between throttled window-size commits during a free-mode drag (~30fps),
+        // so a large overlay window isn't relaid out on every ACTION_MOVE (that per-move relayout is the jitter).
+        private const val SCALE_COMMIT_MIN_INTERVAL_MS = 33L
 
         private const val QQ = "com.tencent.mobileqq"
         private const val YOUTUBE = "com.google.android.youtube"
