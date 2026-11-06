@@ -60,7 +60,7 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
     // Screen width/height
     private var screenWidth: Int = 0
     private var screenHeight: Int = 0
-    // The display density used last time for dp conversion. MIUI's "Display size" only changes density, not pixel size,
+    // The display density used last time for dp conversion. The system "Display size" setting only changes density, not pixel size,
     // which screenWidth/screenHeight alone can't detect, so we must track it separately.
     private var cachedDensityDpi = 0
 
@@ -104,7 +104,7 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
 
         override fun onDisplayChanged(displayId: Int) {
             if (displayId == Display.DEFAULT_DISPLAY) {
-                // Resolution/display-size changes (MIUI "Display size" / "Screen resolution", foldable unfold) don't go through the rotation callback,
+                // Resolution/display-size changes (the system "Display size" setting, some ROMs' resolution switch, foldable unfold) don't go through the rotation callback,
                 // so only here can we get the new size. If we don't recompute, screenWidth and the already-built window pixels stay at old values,
                 // and the dp shown in the settings page would no longer match the actual thickness.
                 // Note this callback may arrive before this process's resources update, reading the old density and doing a wasted pass;
@@ -114,7 +114,7 @@ class KeepAliveService : AccessibilityService(), SharedPreferences.OnSharedPrefe
         }
     }
 
-    // MIUI's "Display size" only changes density and "Screen resolution" only changes size, neither accompanied by rotation, so the rotationWatcher path doesn't fire.
+    // The system "Display size" setting only changes density and a resolution switch only changes size, neither accompanied by rotation, so the rotationWatcher path doesn't fire.
     // Measured (emulator wm density 440->320): when the DisplayListener callback arrives, the process resources still hold old values and the handle pixels don't change;
     // onConfigurationChanged is called back only after the system flushes the new config into this process, so this is the reliable point to get the new density.
     // Unlike Activity, a Service has no configChanges declaration, so any config change definitely calls back—run it directly on the main thread.
