@@ -20,16 +20,16 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
-# 混淆会导致序列化失败
+# Obfuscation would break serialization
 -keep class com.moonlight.freeform.bean.MotionEventBean {*;}
-# 不混淆需要hook的类
+# Don't obfuscate the classes that need to be hooked
 -keep class com.moonlight.freeform.hook.HookFramework {*;}
 -keep class com.moonlight.freeform.hook.HookMyself {*;}
 -keep class com.moonlight.freeform.hook.HookSystemUI {*;}
 -keep class com.moonlight.freeform.hook.utils.HookShellUtils {*;}
 -keep class com.moonlight.freeform.hook.**{*;}
 
-#避免对AIDL混淆
+#Avoid obfuscating AIDL
 -keep class * implements android.os.IInterface {*;}
 
 -dontwarn com.tencent.bugly.**

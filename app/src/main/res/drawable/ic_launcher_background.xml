@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  应用图标背景（自适应图标）：蓝色竖向渐变，形状交给启动器遮罩。
+  App icon background (adaptive icon): a vertical blue gradient; the shape is left to the launcher mask.
   q261013
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"

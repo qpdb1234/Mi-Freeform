@@ -12,7 +12,7 @@
     <string name="agree">Agree</string>
     <string name="lorem_ipsum">" "</string>
     <string name="service_not_running">Shizuku/Sui service is not running, have you authorized Shizuku/Sui for Mi-Freeform?</string>
-    <!-- 包名那段括号改由资源给出：写在代码里会让英文设备拿到「英文正文 + 全角括号」的混搭 -->
+    <!-- The package-name parenthetical is now supplied by a resource: writing it in code would give English devices a mix of "English body + full-width parentheses" -->
     <string name="service_not_running_pkg">Shizuku/Sui service is not running, have you authorized Shizuku/Sui for Mi-Freeform? (%1$s)</string>
     <string name="overlay_no_permission">No floating window permission</string>
     <string name="app_is_running">The app is already in freeform mode</string>
@@ -141,7 +141,7 @@
     <string name="foreground_notification_title">Mi-Freeform is running in the background</string>
     <string name="foreground_notification_text">Click to open sidebar</string>
     <string name="diagnosis_notification_text">Last failure: %1$s</string>
-    <!-- 缺悬浮窗权限时常驻通知上的动作：只有用户主动点才会跳系统设置页（代码自动跳会在 Android 14 上把全进程悬浮窗弄挂） -->
+    <!-- The action on the ongoing notification when the overlay permission is missing: only a user-initiated tap jumps to the system settings page (a code-initiated jump would kill every overlay in the process on Android 14) -->
     <string name="notification_action_grant_overlay">Grant permission</string>
     <string name="service_type_title">Keep alive service type</string>
     <string name="service_type_summary">Foreground service keep-alives via a persistent notification, needs no accessibility and is most compatible; the Accessibility service keeps alive stronger in the background. Only one is used at a time; switching handles the foreground service for you, while the Accessibility service is toggled in system settings</string>
@@ -169,7 +169,7 @@
     <string name="top_bar_full_screen">Full screen</string>
     <string name="top_bar_minimize">Minimize</string>
 
-    <!-- 顶栏三个图标可自定义动作 -->
+    <!-- The three top-bar icons have customizable actions -->
     <string name="top_bar_slot1">Action of the first top bar button</string>
     <string name="top_bar_slot2">Action of the second top bar button</string>
     <string name="top_bar_slot3">Action of the third top bar button</string>
@@ -183,7 +183,7 @@
     <string name="screenshot_saved">Screenshot saved</string>
     <string name="screenshot_failed">Screenshot failed</string>
 
-    <!-- 收起方式 -->
+    <!-- Collapse mode -->
     <string name="minimize_mode_title">Minimize to</string>
     <string name="minimize_mode_sidebar">Sidebar</string>
     <string name="minimize_mode_ball">Floating ball</string>
@@ -191,7 +191,7 @@
     <string name="miniball_alpha">Floating ball transparency</string>
     <string name="miniball_alpha_summary">The higher the value, the more transparent the floating ball</string>
 
-    <!-- 备份设置 -->
+    <!-- Backup settings -->
     <string name="backup_settings">Backup settings</string>
     <string name="restore_settings">Restore settings</string>
     <string name="backup_settings_summary">Export all settings to a file</string>
@@ -221,7 +221,7 @@
     <string name="reset_all_settings_summary">Reset every option on this page to its default (the quick-app and notification-app lists are kept)</string>
     <string name="reset_all_settings_confirm">Restore all settings to their defaults? This clears every value you customized</string>
     <string name="reset_all_success">Default settings restored</string>
-    <!-- 顶部三张状态卡片点开后的介绍标题（描述文字复用 xposed_permission_intro / home_accessibility_warn_message / shizuku_card_message_*） -->
+    <!-- The intro titles shown after tapping the three top status cards (the body text reuses xposed_permission_intro / home_accessibility_warn_message / shizuku_card_message_*) -->
     <string name="xposed_card_title">About Xposed</string>
     <string name="accessibility_card_title">About the accessibility service</string>
 </resources>

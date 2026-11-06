@@ -32,8 +32,8 @@
             android:summary="@string/service_type_summary"
             android:defaultValue="1"
             app:iconSpaceReserved="false"/>
-        <!-- 应用内语言切换：0=跟随系统 1=简体中文 2=English，值域与 LocaleHelper.LANGUAGE_* 对应。
-             生效方式见 SettingFragment.onPreferenceChange 的 APP_LANGUAGE 分支。 -->
+        <!-- In-app language switch: 0=follow system, 1=Simplified Chinese, 2=English; the value domain matches LocaleHelper.LANGUAGE_*.
+             How it takes effect: see the APP_LANGUAGE branch in SettingFragment.onPreferenceChange. -->
         <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
             app:entries="@array/app_language"
             app:entryValues="@array/app_language_value"
@@ -97,7 +97,7 @@
             android:summary="@string/use_sui_refuse_to_fullscreen_summary"
             app:iconSpaceReserved="false"/>
 
-        <!-- 拖动缩放方式：底栏两个圆点 与 左/右下角，各自可选等比例/自由 -->
+        <!-- Drag-to-scale mode: the two bottom-bar dots and the left/right corners, each can pick proportional/free -->
         <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
             app:entries="@array/freeform_scale_mode"
             app:entryValues="@array/freeform_scale_mode_value"
@@ -116,7 +116,7 @@
             android:defaultValue="0"
             app:iconSpaceReserved="false"/>
 
-        <!-- 顶栏三个图标可自定义动作。运行时用 TopBarAction.getSlotActionFromSp 从 app_settings 按同名 key 读取。 -->
+        <!-- The three top-bar icons have customizable actions. At runtime TopBarAction.getSlotActionFromSp reads them from app_settings by the same key. -->
         <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
             app:entries="@array/top_bar_action"
             app:entryValues="@array/top_bar_action_value"
@@ -141,7 +141,7 @@
             android:defaultValue="2"
             app:iconSpaceReserved="false"/>
 
-        <!-- 双击底栏中部按钮的动作，与顶栏三个按钮共用可选动作。 -->
+        <!-- The double-tap action on the middle of the bottom bar; it shares the same set of selectable actions as the three top-bar buttons. -->
         <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
             app:entries="@array/top_bar_action"
             app:entryValues="@array/top_bar_action_value"
@@ -175,8 +175,8 @@
             android:defaultValue="1"
             app:iconSpaceReserved="false"/>
 
-        <!-- 侧边栏几何：长度/宽度、X/Y 位置，以及 X/Y 轴锁定（默认锁定 X 轴）。
-             宽度默认 8dp：贴着屏幕边的细胶囊，去掉外边距后这里的值就是可见宽度。 -->
+        <!-- Sidebar geometry: length/width, X/Y position, and X/Y axis locking (X locked by default).
+             Width defaults to 8dp: a thin capsule hugging the screen edge; once the outer margin is removed, this value is the visible width. -->
         <com.moonlight.freeform.ui.view.NumericSeekBarPreference
             android:key="sidebar_length_dp"
             android:title="@string/sidebar_length_title"
@@ -193,9 +193,9 @@
             app:min="0"
             android:max="80"
             app:showSeekBarValue="true"/>
-        <!-- 两个位置滑条的 app:min / android:max 只是 XML 兜底值：SettingFragment 会按当前屏幕
-             方向和把手宽高重算区间（X 上限 (屏宽-把手宽)/2，Y 上限 (屏高-把手长)/2），
-             所以这里写得比哪台机器的实际值都大也不会留下拖了没反应的死档。 -->
+        <!-- The app:min / android:max on the two position sliders are only XML fallbacks: SettingFragment recomputes the range per the current screen
+             orientation and the handle's width/height (X upper bound (screenWidth-handleWidth)/2, Y upper bound (screenHeight-handleLength)/2),
+             so writing them larger than any real device's value still won't leave a dead range that drags with no effect. -->
         <com.moonlight.freeform.ui.view.NumericSeekBarPreference
             android:key="sidebar_pos_x_dp"
             android:title="@string/sidebar_pos_x_title"
@@ -211,9 +211,9 @@
             android:summary="@string/sidebar_lock_x_summary"
             android:defaultValue="true"
             app:iconSpaceReserved="false"/>
-        <!-- app:seekStep：松手时把值吸附到步进的整数倍，轨道只有 ~850px 却要容下几百个档位，
-             一个数值只剩约 1px 的落点，像 0（屏幕居中）这种中间值基本滑不到；吸附到 4 的倍数后
-             0 就有 ~4px 的容错，需要奇数值时点右边的数字芯片直接输。 -->
+        <!-- app:seekStep: on release, snap the value to a multiple of the step; the track is only ~850px yet must hold hundreds of levels,
+             leaving each value about 1px of landing, so a middle value like 0 (screen-centered) is nearly impossible to hit; after snapping to a
+             multiple of 4, 0 gets ~4px of tolerance, and when you need an odd value just tap the number chip on the right to type it. -->
         <com.moonlight.freeform.ui.view.NumericSeekBarPreference
             android:key="sidebar_pos_y_dp"
             android:title="@string/sidebar_pos_y_title"
@@ -231,7 +231,7 @@
             android:defaultValue="false"
             app:iconSpaceReserved="false"/>
 
-        <!-- 收起方式：侧边栏 或 悬浮球 -->
+        <!-- Collapse mode: sidebar or floating ball -->
         <com.moonlight.freeform.ui.view.IntegerSimpleMenuPreference
             app:entries="@array/minimize_mode"
             app:entryValues="@array/minimize_mode_value"

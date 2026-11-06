@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <item name="textureView" type="id"/>
-    <!-- 设置页顶部三张状态卡片 -->
+    <!-- The three status cards at the top of the settings page -->
     <item name="status_card_xposed" type="id"/>
     <item name="status_card_shizuku" type="id"/>
     <item name="status_card_accessibility" type="id"/>

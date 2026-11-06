@@ -18,7 +18,7 @@
         <item>1</item>
     </integer-array>
 
-    <!-- 顶栏按钮可选动作；顺序必须与 TopBarAction 枚举的 id 一致 -->
+    <!-- Selectable actions for the top-bar buttons; the order must match the id order of the TopBarAction enum -->
     <string-array name="top_bar_action">
         <item>Close</item>
         <item>Full screen</item>
@@ -41,7 +41,7 @@
         <item>7</item>
     </integer-array>
 
-    <!-- 收起方式：0=侧边栏，1=悬浮球。顺序与 FreeformView.MINIMIZE_MODE_* 一致 -->
+    <!-- Collapse mode: 0=sidebar, 1=floating ball. The order matches FreeformView.MINIMIZE_MODE_* -->
     <string-array name="minimize_mode">
         <item>Sidebar</item>
         <item>Floating ball</item>
@@ -62,8 +62,8 @@
         <item>1</item>
     </integer-array>
 
-    <!-- 应用内语言：0=跟随系统 1=简体中文 2=English，须与 LocaleHelper.LANGUAGE_* 一致；
-         「简体中文 / English」按惯例在各语言下都用自己的语言书写，不翻译 -->
+    <!-- In-app language: 0=follow system, 1=Simplified Chinese, 2=English; must match LocaleHelper.LANGUAGE_*.
+         "简体中文 / English" are conventionally written in their own language under every locale, so they are not translated -->
     <string-array name="app_language">
         <item>Follow system</item>
         <item>简体中文</item>
@@ -76,7 +76,7 @@
         <item>2</item>
     </integer-array>
 
-    <!-- 拖动缩放方式：0=等比例，1=自由。顺序与 FreeformView.SCALE_MODE_* 一致 -->
+    <!-- Drag-to-scale mode: 0=proportional, 1=free. The order matches FreeformView.SCALE_MODE_* -->
     <string-array name="freeform_scale_mode">
         <item>Proportional</item>
         <item>Free</item>

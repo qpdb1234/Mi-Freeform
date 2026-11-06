@@ -123,12 +123,13 @@
             </intent-filter>
         </receiver>
 
-        <!-- 开小窗请求的静态入口。原来这段是注释掉的，接收器只在 ForegroundService /
-             KeepAliveService 的 onCreate 里运行时注册：进程被停或被系统半拉起时根本没有
-             接收器，广播在投递阶段就被丢弃（实测 result=0、零窗口、零日志），表现为「点了没反应」。
-             action 用 ${applicationId} 占位，与 MiFreeform.PACKAGE_NAME（= BuildConfig.APPLICATION_ID）
-             以及 HookLauncher 的发送方同源，改包名不会发错包。
-             静态声明与运行时注册并存，重复投递由 StartFreeformReceiver 内部去重。 -->
+        <!-- Static entry point for freeform-open requests. This block used to be commented out, and the receiver
+             was only registered at runtime inside ForegroundService / KeepAliveService onCreate: when the process is
+             stopped or half-launched by the system there is no receiver at all, and the broadcast is dropped at the
+             delivery stage (measured: result=0, zero windows, zero logs), showing up as "tapping does nothing".
+             The action uses the ${applicationId} placeholder, sharing one source with MiFreeform.PACKAGE_NAME
+             (= BuildConfig.APPLICATION_ID) and HookLauncher's sender, so changing the package name won't send to the wrong package.
+             Static declaration and runtime registration coexist; duplicate deliveries are de-duplicated inside StartFreeformReceiver. -->
         <receiver
             android:name=".broadcast.StartFreeformReceiver"
             android:enabled="true"
@@ -149,16 +150,16 @@
         <meta-data
             android:name="xposedscope"
             android:resource="@array/xposedscope" /> <!-- bugly -->
-        <!-- 配置APP ID -->
+        <!-- Configure the APP ID -->
         <meta-data
             android:name="BUGLY_APPID"
-            android:value="9dd3bdbd10" /> <!-- 配置APP版本号 -->
+            android:value="9dd3bdbd10" /> <!-- Configure the APP version -->
         <meta-data
             android:name="BUGLY_APP_VERSION"
-            android:value="2.5.38" /> <!-- 配置APP渠道号 -->
+            android:value="2.5.38" /> <!-- Configure the APP channel -->
         <meta-data
             android:name="BUGLY_APP_CHANNEL"
-            android:value="normal" /> <!-- 配置Bugly调试模式（true或者false） -->
+            android:value="normal" /> <!-- Configure Bugly debug mode (true or false) -->
         <meta-data
             android:name="BUGLY_ENABLE_DEBUG"
             android:value="true" />

@@ -35,8 +35,8 @@
                 app:layout_constraintTop_toBottomOf="@+id/topBar">
             </TextureView>
 
-            <!-- 小窗的开屏 loading 已删除（原本是一个 lottie 动画，靠首帧淡入淡出），
-                 画面直接由下面的 TextureView 显示。 -->
+            <!-- The freeform's launch loading has been removed (it was originally a lottie animation fading in/out on the first frame);
+                 the content is shown directly by the TextureView below. -->
 
             <include
                 android:id="@+id/topBar"

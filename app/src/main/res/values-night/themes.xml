@@ -6,10 +6,10 @@
         <item name="colorSecondary">?colorPrimary</item>
         <item name="colorSecondaryVariant">?colorSecondary</item>
         <item name="colorOnSecondary">?colorOnPrimary</item>
-        <!--背景颜色-->
+        <!--background color-->
         <item name="colorSurface">@color/color_surface</item>
         <item name="android:colorBackground">?colorSurface</item>
-        <!--保证状态栏颜色-->
+        <!--ensure the status bar color-->
         <item name="colorPrimaryDark">?colorSurface</item>
         <item name="android:windowLightStatusBar">?isLightTheme</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

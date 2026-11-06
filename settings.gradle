@@ -1,10 +1,10 @@
 pluginManagement {
     repositories {
-        // 优先使用阿里云镜像，加速插件下载
+        // Prefer the Aliyun mirror to speed up plugin downloads
         maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
         maven { url 'https://maven.aliyun.com/repository/google' }
         maven { url 'https://maven.aliyun.com/repository/public' }
-        // 保留官方仓库作为备用
+        // Keep the official repositories as a fallback
         gradlePluginPortal()
         google()
         mavenCentral()
@@ -14,10 +14,10 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        // 优先使用阿里云镜像，加速依赖下载
+        // Prefer the Aliyun mirror to speed up dependency downloads
         maven { url 'https://maven.aliyun.com/repository/public' }
         maven { url 'https://maven.aliyun.com/repository/google' }
-        // 保留官方仓库作为备用
+        // Keep the official repositories as a fallback
         google()
         mavenCentral()
         maven { url 'https://jitpack.io' }

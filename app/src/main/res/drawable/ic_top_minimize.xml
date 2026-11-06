@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 最小化：底部一条横线（标准最小化符号），与全屏的四角、关闭的叉号形态区分明显。 -->
+<!-- Minimize: a horizontal line at the bottom (the standard minimize symbol), clearly distinct in shape from full screen's four corners and close's cross. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

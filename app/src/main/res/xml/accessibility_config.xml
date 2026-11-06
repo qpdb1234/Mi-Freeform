@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  事件过滤只监听本应用自身。
-  这里必须与 applicationId 一致；改包名时记得同步修改本项，
-  否则无障碍服务收不到本应用的事件。
+  Event filtering only listens to this app itself.
+  This must match applicationId; when changing the package name, remember to update this entry too,
+  otherwise the accessibility service won't receive this app's events.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeAllMask"

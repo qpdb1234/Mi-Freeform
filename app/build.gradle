@@ -7,25 +7,25 @@ plugins {
 }
 
 stringfog {
-    // 必要：加解密库的实现类路径，需和上面配置的加解密算法库一致。
+    // Required: the impl class path of the encrypt/decrypt library; must match the algorithm library configured above.
     implementation 'com.github.megatronking.stringfog.xor.StringFogImpl'
-    // 可选：加密开关，默认开启。
+    // Optional: encryption switch, on by default.
     enable true
-    // 可选：指定需加密的代码包路径，可配置多个，未指定将默认全部加密。
+    // Optional: the code package paths to encrypt; multiple allowed, and unspecified means encrypt everything.
     fogPackages = ['com.moonlight.freeform']
 }
 
-// 签名材料从仓库根的 keystore.properties 读：这个文件不入库（.gitignore 已排除
-// keystore.properties 与 *.jks），所以公开仓库里不会再出现任何口令。
-// 没有这个文件时：debug 走 AGP 标准调试证书（CN=Android Debug），产物可正常安装；
-// release 不设 signingConfig，产出 app-release-unsigned.apk，由使用者自己换钥签名。
-// 这样别人克隆下来不带任何密钥也能构建，也不会拿上游名义的密钥发布包。
+// Signing material is read from keystore.properties at the repository root: this file is not committed
+// (.gitignore already excludes keystore.properties and *.jks), so no password ever appears in the public repository.
+// When the file is absent: debug uses the standard AGP debug certificate (CN=Android Debug) and the artifact installs normally;
+// release gets no signingConfig and produces app-release-unsigned.apk, leaving the user to re-sign with their own key.
+// This way anyone can build a fresh clone without any key, and no one publishes packages under the upstream author's key.
 def keystorePropsFile = rootProject.file('keystore.properties')
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) {
     keystorePropsFile.withInputStream { keystoreProps.load(it) }
 }
-// 配置文件和 keystore 实体都在，才真的启用自定义签名
+// Only actually enable custom signing when both the config file and the keystore entity exist
 def localSigningReady = keystorePropsFile.exists() &&
         keystoreProps.getProperty('storeFile') &&
         rootProject.file(keystoreProps.getProperty('storeFile')).exists()
@@ -34,30 +34,30 @@ android {
     compileSdk 32
 
     defaultConfig {
-        // 应用包名（applicationId）：com.mifreeform.freeform。
-        // Java/Kotlin 代码命名空间（namespace）仍为 com.moonlight.freeform
-        // （源码目录、R/BuildConfig、xposed_init 的类名、布局里的自定义 View
-        // 全类名都基于 namespace，保持不变可避免大范围改动）。
-        // 注意：无障碍等按 applicationId 匹配的地方（accessibility_config.xml
-        // 的 packageNames）需与本值保持一致。
+        // Application package name (applicationId): com.mifreeform.freeform.
+        // The Java/Kotlin code namespace stays com.moonlight.freeform
+        // (the source directory, R/BuildConfig, the class names in xposed_init, and the fully-qualified custom View
+        // class names in layouts are all based on namespace; keeping them avoids a large-scale change).
+        // Note: places that match by applicationId (such as packageNames in accessibility_config.xml)
+        // must stay in sync with this value.
         applicationId "com.mifreeform.freeform"
         minSdk 27
         targetSdk 32
-        // versionCode 必须随功能递增，否则和已安装的同包名旧版本
-        // versionCode 相同时，系统会认为「没有更新」而拒绝覆盖安装。
+        // versionCode must increase with features; otherwise, when it equals an already-installed version with the
+        // same package name, the system treats it as "no update" and refuses an in-place install.
         versionCode 2551
         versionName "2.5.38"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            // 设置支持的SO库架构
+            // Supported SO library ABIs
             abiFilters 'arm64-v8a','armeabi-v7a' //, 'x86', 'armeabi-v7a', 'x86_64', 'arm64-v8a'
         }
     }
 
     signingConfigs {
-        // 注意：密钥一旦更换，设备上已有的旧包因签名不一致无法覆盖安装，需先卸载。
+        // Note: once the key changes, packages already on the device cannot be upgraded in place because their signature differs — uninstall them first.
         if (localSigningReady) {
             release {
                 storeFile rootProject.file(keystoreProps.getProperty('storeFile'))
@@ -76,8 +76,8 @@ android {
 
     buildTypes {
         debug {
-            // 调试包额外带上 x86/x86_64，否则在 x86_64 模拟器上会 INSTALL_FAILED_NO_MATCHING_ABIS。
-            // buildTypes 里的 abiFilters 是与 defaultConfig 取并集，所以 release 仍然只打 arm。
+            // The debug build additionally bundles x86/x86_64, otherwise an x86_64 emulator hits INSTALL_FAILED_NO_MATCHING_ABIS.
+            // abiFilters in buildTypes is unioned with defaultConfig, so release still ships arm only.
             ndk {
                 abiFilters 'x86', 'x86_64'
             }
@@ -87,8 +87,8 @@ android {
             shrinkResources true
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // 有本地签名材料就用它；没有就留空（产出未签名 release 包），
-            // 而不是拿一个不存在的文件去签名，也不是拿上游名义的密钥。
+            // Use local signing material when present; otherwise leave it empty (produce an unsigned release),
+            // rather than signing with a nonexistent file or using the upstream author's key.
             if (localSigningReady) {
                 signingConfig signingConfigs.release
             }

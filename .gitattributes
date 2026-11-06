@@ -1,9 +1,9 @@
-# 行尾规范：仓库内一律存 LF，避免 gradlew 在 Linux/macOS 上因 CRLF 而无法执行
+# Line-ending policy: always store LF in the repository, so gradlew isn't left unexecutable on Linux/macOS due to CRLF
 gradlew text eol=lf
 *.sh text eol=lf
 *.bat text eol=crlf
 
-# 源码与文本
+# Source and text
 *.kt text eol=lf
 *.kts text eol=lf
 *.java text eol=lf
@@ -14,7 +14,7 @@ gradlew text eol=lf
 *.pro text eol=lf
 *.properties text eol=lf
 
-# 二进制：绝不做行尾转换
+# Binary: never apply line-ending conversion
 *.png binary
 *.webp binary
 *.jpg binary

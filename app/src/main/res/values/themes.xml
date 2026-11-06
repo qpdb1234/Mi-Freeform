@@ -6,10 +6,10 @@
         <item name="colorSecondary">?colorPrimary</item>
         <item name="colorSecondaryVariant">?colorSecondary</item>
         <item name="colorOnSecondary">?colorOnPrimary</item>
-        <!--背景颜色-->
+        <!--background color-->
         <item name="colorSurface">@color/color_surface</item>
         <item name="android:colorBackground">?colorSurface</item>
-        <!--保证状态栏颜色-->
+        <!--ensure the status bar color-->
         <item name="colorPrimaryDark">?colorSurface</item>
         <item name="android:windowLightStatusBar">?isLightTheme</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
@@ -17,7 +17,7 @@
 
     <style name="Theme.MiFreeform" parent="Base.Theme.MiFreeform" />
 
-    <!--启动路由页主题: 去掉开屏画面(透明窗口 + 禁用预览窗口), 仅用于权限/路由, 不显示任何内容-->
+    <!--Splash routing page theme: removes the launch screen (translucent window + preview window disabled), used only for permission/routing and shows no content-->
     <style name="Theme.MiFreeform.Splash" parent="Theme.MiFreeform">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
@@ -31,7 +31,7 @@
         <item name="android:textAllCaps">false</item>
     </style>
 
-    <!--Activity做对话框的效果-->
+    <!--Makes an Activity behave like a dialog-->
     <style name="ActivityDialogTheme" parent="Theme.AppCompat.Light.Dialog">
         <item name="android:windowFullscreen">true</item>
         <item name="android:fitsSystemWindows">true</item>

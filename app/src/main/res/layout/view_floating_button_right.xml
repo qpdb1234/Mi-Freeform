@@ -5,8 +5,8 @@
     android:layout_width="@dimen/floating_button_width"
     android:layout_height="@dimen/floating_button_height">
 
-    <!-- 不留外边距：把手胶囊必须铺满整个窗口，窗口贴屏幕边缘时可见部分才真正贴边
-         （设置里 X 轴位置=0 的语义就是贴边，之前这里 4dp 让它永远差一个身位）。 -->
+    <!-- No outer margin: the handle capsule must fill the whole window, so that when the window touches the screen edge the visible part truly reaches the edge
+         (in settings, X-axis position = 0 means flush to the edge; the old 4dp here always left it one body-width short). -->
     <View
         android:layout_width="0dp"
         android:layout_height="0dp"

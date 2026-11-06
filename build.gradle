@@ -2,7 +2,7 @@
 buildscript {
     dependencies {
         classpath 'com.github.megatronking.stringfog:gradle-plugin:3.0.0'
-        // 选用加解密算法库，默认实现了xor算法，也可以使用自己的加解密库。
+        // Pick the encrypt/decrypt algorithm library; the xor algorithm is implemented by default, and you can use your own library instead.
         classpath 'com.github.megatronking.stringfog:xor:3.0.0'
     }
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  单张状态卡片。高度 = listPreferredItemHeight(约64dp) + 8dp 上下内边距 = 72dp，
-  与设置页 Preference 条目等高。内部按指定 padding 对齐图标与文字。
+  A single status card. Height = listPreferredItemHeight (~64dp) + 8dp top/bottom padding = 72dp,
+  matching the height of the Preference rows on the settings page. The icon and text are aligned with the specified padding.
 -->
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"

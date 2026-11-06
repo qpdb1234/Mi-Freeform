@@ -2,15 +2,15 @@
     <dimen name="fab_margin">16dp</dimen>
 
     <dimen name="scale_view_size">32dp</dimen>
-    <!-- 顶栏高度与底栏完全一致。 -->
+    <!-- The top bar height is exactly the same as the bottom bar. -->
     <dimen name="top_bar_height">24dp</dimen>
     <dimen name="bottom_bar_height">24dp</dimen>
 
-    <!-- 顶栏三段指示线尺寸 -->
+    <!-- Size of the three-segment indicator line on the top bar -->
     <dimen name="top_bar_mark_width">24dp</dimen>
     <dimen name="top_bar_mark_long_width">40dp</dimen>
     <dimen name="top_bar_mark_height">4dp</dimen>
-    <!-- 顶栏图标尺寸：24dp 高的条里放 14dp 图标，与底栏圆点视觉比例协调 -->
+    <!-- Top-bar icon size: a 14dp icon inside a 24dp-tall bar, visually balanced with the bottom-bar dots -->
     <dimen name="top_bar_icon_size">14dp</dimen>
     <dimen name="card_corner_radius">16dp</dimen>
     <dimen name="hang_up_tip_size">96dp</dimen>

@@ -33,7 +33,7 @@
         android:gravity="center_vertical"
         android:orientation="vertical">
 
-        <!--不能用MTextView，会和searchView抢焦点-->
+        <!--MTextView cannot be used here, it would steal focus from the searchView-->
         <TextView
             android:id="@+id/text_title"
             android:layout_width="wrap_content"
