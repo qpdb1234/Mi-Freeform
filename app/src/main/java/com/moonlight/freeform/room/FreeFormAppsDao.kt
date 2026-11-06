@@ -32,12 +32,12 @@ interface FreeFormAppsDao {
     @Query("SELECT packageName FROM FreeFormAppsEntity")
     fun getAllWithoutLiveData() : List<String>?
 
-    // 备份用：取完整实体（含 sortNum 主键和 userId），getAllWithoutLiveData 只给 packageName 不够。
+    // Backup: read full entities (with the sortNum primary key and userId); getAllWithoutLiveData only returns packageName, which is not enough.
     @Query("SELECT * FROM FreeFormAppsEntity ORDER BY sortNum ASC")
     fun getAllEntitiesSync(): List<FreeFormAppsEntity>
 
-    // 恢复用：保留原始 sortNum 排序主键，用 insertApps 那条不带 sortNum 的语句
-    // 会拿到自增的新号，跨设备恢复时应用顺序就乱了。
+    // Restore: keep the original sortNum ordering key. Using the insertApps statement that omits sortNum
+    // would take an auto-incremented new id, scrambling the app order when restoring across devices.
     @Query("INSERT OR REPLACE INTO FreeFormAppsEntity(sortNum, packageName, userId) VALUES(:sortNum, :packageName, :userId)")
     fun insertWithSortNum(sortNum: Int, packageName: String, userId: Int)
 

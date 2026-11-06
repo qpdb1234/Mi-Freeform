@@ -15,7 +15,7 @@ import com.moonlight.freeform.ui.freeform.FreeformView
 import java.lang.reflect.Method
 
 /**
- * 用于开启目标程序
+ * Used to launch the target app.
  */
 class NotificationIntentService : Service() {
 
@@ -33,9 +33,9 @@ class NotificationIntentService : Service() {
 
     @SuppressLint("WrongConstant")
     private fun startFreeForm(targetPackage: String, targetUserId: Int) {
-        //关闭通知栏
+        //Collapse the notification shade
         collapseStatusBar()
-        //点击后清除小窗
+        //Clear the freeform notification after the tap
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(2)
 
@@ -51,7 +51,7 @@ class NotificationIntentService : Service() {
                 }
             }
             val sp = getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
-            // 同一应用已有小窗时先清掉旧实例
+            // If the same app already has a freeform, destroy the old instance first
             targetPackage?.let { FreeformHelper.destroyExistingFreeform(it, targetUserId ?: 0) }
 
             FreeformView(

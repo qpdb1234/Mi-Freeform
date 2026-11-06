@@ -42,7 +42,7 @@ class FreeformView(
     override val config: FreeformConfig,
     private val context: Context,
 ) : FreeformViewAbs(config), View.OnTouchListener {
-    //服务
+    //Services
     private val windowManager: WindowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val displayManager: DisplayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     private var activityTaskManager: IActivityTaskManager? = null
@@ -55,85 +55,85 @@ class FreeformView(
 
     private val scope = MainScope()
 
-    //默认屏幕，用于获取横竖屏状态
+    //The default display, used to get the portrait/landscape state
     private val defaultDisplay: Display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
 
-    //界面binding
+    //UI binding
     private lateinit var binding: ViewFreeformBinding
 
-    //判断是否是初次启动，防止屏幕旋转时再初始化
+    //Whether this is the first launch, to avoid re-initializing on screen rotation
     private var firstInit = true
 
-    //该小窗是否已经销毁
+    //Whether this freeform window is already destroyed
     private var isDestroy = false
 
     /**
-     * destroy() 是否已经真正执行过，仅用于幂等。
+     * Whether destroy() has truly run; used only for idempotence.
      *
-     * 和 [isDestroy] 不是一回事：[isDestroy] 在 [moveTaskToDefaultDisplay] 里
-     * 会被提前置位（用来让 Sui 钩子别把任务拉回小窗），那时 destroy() 还没执行；
-     * 如果幂等也用 [isDestroy]，全屏时 destroy() 会被直接跳过，
-     * 小窗就留在屏幕上、虚拟屏也停在全屏尺寸，下次打开应用画面会比小窗小一圈。
+     * This is not the same as [isDestroy]: [isDestroy] gets set early inside [moveTaskToDefaultDisplay]
+     * (to stop the Sui hook from pulling the task back into the freeform window), before destroy() has run;
+     * if idempotence also used [isDestroy], then in fullscreen destroy() would be skipped outright,
+     * leaving the freeform window on screen and the virtual display stuck at fullscreen size, so next time the app would render a size smaller than the window.
      */
     private var isDestroyed = false
 
     /**
-     * 窗口此刻是否真的挂在 WindowManager 上。
+     * Whether the window is really attached to the WindowManager right now.
      *
-     * destroy() 用它决定要不要 removeView。没有这个标记就会自己造假警报：
-     * 开窗失败（两种窗口类型的 addView 都没成）之后照样会走 destroy()，
-     * 那时 removeViewImmediate 必然抛「View not attached」，于是我们记下一条
-     * 「僵尸窗口占内存」，可屏幕上根本什么都没有。实测已经误报过一次。
+     * destroy() uses it to decide whether to removeView. Without this flag we'd raise a false alarm:
+     * after a failed window open (both window-type addViews failed) we still run destroy(),
+     * and there removeViewImmediate always throws "View not attached", so we'd log a
+     * "zombie window holding memory" when there's nothing on screen at all. Measured: it misfired once already.
      */
     private var windowAttached = false
 
     /**
-     * 开完窗后回头确认「系统真的把这个窗口画出来了」的第一次检查。
+     * The first check after opening the window that confirms "the system really drew this window".
      *
-     * 为什么需要：窗口被系统隐藏时，本地一切看起来都是正常的——addView 不报错、
-     * TextureView 照样拿到纹理、虚拟屏照样在跑，只有屏上什么都没有。
-     * 实测那种窗口在 WMS 里是 mForceHideNonSystemOverlayWindow=true。
+     * Why it's needed: when the window is hidden by the system, everything looks normal locally—addView doesn't error,
+     * TextureView still gets its texture, the virtual display still runs—only there's nothing on screen.
+     * Measured: such a window has mForceHideNonSystemOverlayWindow=true in WMS.
      */
     private val surfaceWatchdog = Runnable { probeWindowDisplayed(first = true) }
 
     /**
-     * 第二次的确认检查。
+     * The second confirmation check.
      *
-     * 不能一看「被隐藏」就拆窗：实测过一种只会持续几秒的隐藏，下一秒自己又好了，
-     * 那时拆掉等于把用户正在用的小窗弄没。真正要治的是那种一直到进程重启都不恢复的。
+     * We can't tear down the window the moment we see "hidden": measured, there's a kind of hiding that lasts only a few seconds
+     * and fixes itself the next second, and tearing down then would remove the freeform window the user is using. What we really must handle is the kind that never recovers until the process restarts.
      */
     private val surfaceWatchdogConfirm = Runnable { probeWindowDisplayed(first = false) }
 
-    /** 供外部（再次启动同一应用时）调用的销毁入口，幂等。 */
+    /** The destroy entry point callable externally (when re-launching the same app), idempotent. */
     override fun destroyFreeform() {
         destroy()
     }
 
-    //是否处于隐藏状态，当打开米窗的正在运行小窗界面时，应当隐藏所有小窗
+    //Whether in the hidden state; when MiFreeform's "running freeform windows" screen is opened, all freeform windows should be hidden
     private var isHidden = false
 
-    //是否处于后台挂起状态
+    //Whether in the background-suspended state
     private var isBackstage = false
 
-    /** 收起后的悬浮球；仅悬浮球模式下非空。 */
+    /** The floating ball after collapse; non-null only in floating-ball mode. */
     private var miniBall: MiniBallView? = null
 
-    //小窗中应用的taskId
+    //The taskId of the app inside the freeform window
     private var taskId = -1
 
-    //叠加层Params
+    //Overlay params
     private val windowLayoutParams = WindowManager.LayoutParams()
 
-    //虚拟屏幕
+    //Virtual display
     private lateinit var virtualDisplay: VirtualDisplay
 
-    //物理屏幕方向
+    //Physical screen orientation
     private var screenRotation = defaultDisplay.rotation
-    //虚拟屏幕方向，1 竖屏， 0 横屏
+    //Virtual display orientation, 1 portrait, 0 landscape
     private var virtualDisplayRotation = VIRTUAL_DISPLAY_ROTATION_PORTRAIT
 
-    //用户是否手动旋转过小窗方向。为真时不让应用上报的 requestedOrientation 把窗口复位，
-    //且收起/恢复（fromBackstage 不重置该标记）期间保持用户设定的方向。
+    //Whether the user manually rotated the freeform window's orientation. When true, don't let the app-reported requestedOrientation reset the window,
+    //and keep the user-set orientation during collapse/restore (fromBackstage doesn't reset this flag).
     private var manualRotationOverride = false
 
     private val iRotationWatcher = object : IRotationWatcher.Stub() {
@@ -147,7 +147,7 @@ class FreeformView(
         }
     }
 
-//    //屏幕监听
+//    //Screen listener
 //    private val displayListener = object : DisplayManager.DisplayListener {
 //        override fun onDisplayAdded(displayId: Int) {}
 //
@@ -166,45 +166,45 @@ class FreeformView(
 
     private val screenListener = ScreenListener(context)
 
-    //触摸监听
+    //Touch listener
     private val touchListener = TouchListener()
     private val touchListenerPreQ = TouchListenerPreQ()
 
-    //屏幕宽高，不保证大小
+    //Screen width/height, size not guaranteed
     private var realScreenWidth = 0
     private var realScreenHeight = 0
 
-    //小窗的“尺寸”，该尺寸只在小窗内屏幕方向改变时变化
+    //The freeform window's "size"; this size only changes when the orientation inside the freeform window changes
     private var freeformScreenHeight = 0
     private var freeformScreenWidth = 0
 
-    //小窗界面的宽高，该宽高不随着屏幕、小窗方向改变而改变，即h>w恒成立。该尺寸只在物理屏幕方向变化时变化
+    //The freeform window UI's width/height; this size doesn't change with screen or window orientation, i.e. h>w always holds. It only changes when the physical screen orientation changes
     private var freeformHeight = 0
     private var freeformWidth = 0
 
-    //用户为「竖屏形态」与「横屏形态」分别设定的小窗长边。
-    //为什么要分两份：
-    //1) 转横屏时如果窗口比屏幕宽，onFreeFormRotationChanged / clampFreeformToScreen 会把
-    //   freeformHeight 夹小，那只是为了不溢出屏幕的显示层限制，不是用户改了尺寸；
-    //2) 横屏下调出来的尺寸也不该由竖屏的尺寸换算出来，否则「横屏调好 → 转回竖屏 → 再转横屏」
-    //   尺寸又被换算了回去，用户看到的就是旋转一次尺寸变一次。
-    //竖屏那份开屏就有值（就是开屏尺寸）；横屏那份为 0 表示「用户还没在横屏下调过」，
-    //这时横屏沿用竖屏的尺寸，保证「没动过就不变」。
-    //这两份记忆属于「当前打开的这个应用的小窗」：它是实例字段，每个应用各一份互不干扰，
-    //小窗关闭（destroy，对象销毁）后记忆也随之消失，不会带到下一个应用、也不会留到下次开屏。
+    //The user-set long edge of the freeform window for the "portrait form" and the "landscape form" separately.
+    //Why two copies:
+    //1) when turning landscape, if the window is wider than the screen, onFreeFormRotationChanged / clampFreeformToScreen
+    //   clamp freeformHeight down—that's only a display-layer limit to avoid overflow, not the user changing the size;
+    //2) the size tuned in landscape shouldn't be derived from the portrait one, otherwise "tune in landscape → rotate back to portrait → rotate to landscape"
+    //   recomputes the size again, and the user sees the size change on every rotation.
+    //The portrait copy has a value from launch (the launch size); the landscape copy being 0 means "the user hasn't tuned it in landscape yet",
+    //in which case landscape reuses the portrait size, ensuring "if untouched, it stays".
+    //These two memories belong to "the freeform window of the currently open app": they're instance fields, one per app without interference,
+    //and when the freeform window closes (destroy, object reclaimed) the memory vanishes too—it won't carry to the next app nor persist to the next launch.
     private var userPortraitHeight = 0
     private var userLandscapeHeight = 0
 
-    //max(freeformScreenHeight,freeformScreenWidth)，用于计算scale
+    //max(freeformScreenHeight,freeformScreenWidth), used to compute scale
     private var maxFreeformScreenSize = 0
     private var minFreeformScreenSize = 0
 
-    //缩放比例
+    //Scale ratio
     private var scaleX: Float = 1f
     private var scaleY: Float = 1f
 
-    // 顶栏三段手势：具体执行什么动作由设置决定（TopBarAction），
-    // 不再写死。三个 detector 只负责把单击翻译成对应槽位的动作。
+    // Top-bar three-segment gestures: what each does is decided by settings (TopBarAction),
+    // no longer hardcoded. The three detectors only translate a single tap into the corresponding slot's action.
     private val topMinimizeGestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onSingleTapUp(e: MotionEvent): Boolean {
             handleTopBarSlot(2)
@@ -227,11 +227,11 @@ class FreeformView(
     })
 
     /**
-     * 按设置刷新顶栏三个槽位的图标。
+     * Refreshes the top bar's three slot icons per settings.
      *
-     * 顶栏布局里三个 LinearLayout 的 id 固定（位置固定），
-     * 但每个位置显示什么图标、执行什么动作由 TopBarAction 决定。
-     * 动作映射在 [handleTopBarSlot]，这里只负责把图标画成设置里的样子。
+     * The three LinearLayout ids in the top-bar layout are fixed (positions fixed),
+     * but what icon each position shows and what action it runs is decided by TopBarAction.
+     * The action mapping is in [handleTopBarSlot]; here we only draw the icons to match settings.
      */
     private fun refreshTopBarIcons() {
         applyTopBarIcon(binding.topBar.topBarClose, TopBarAction.getSlotActionFromSp(context.getSharedPreferences(com.moonlight.freeform.app.MiFreeform.APP_SETTINGS_NAME, android.content.Context.MODE_PRIVATE), 0))
@@ -247,15 +247,15 @@ class FreeformView(
             icon.visibility = android.view.View.VISIBLE
             icon.contentDescription = context.getString(TopBarAction.labelRes(action))
         } else {
-            // 选了「无」就藏掉图标，但触摸区仍在，点了没反应。
+            // Choosing "none" hides the icon, but the touch area remains—tapping does nothing.
             icon.visibility = android.view.View.INVISIBLE
         }
     }
 
     /**
-     * 执行顶栏某个槽位配置的动作。
+     * Runs the action configured for a top-bar slot.
      *
-     * @param slot 0=第1位，1=第2位，2=第3位
+     * @param slot 0=first, 1=second, 2=third
      */
     private fun handleTopBarSlot(slot: Int) {
         val sp = context.getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
@@ -263,10 +263,10 @@ class FreeformView(
     }
 
     /**
-     * 执行一个小窗动作。
+     * Runs a freeform-window action.
      *
-     * 顶栏三个槽位与「双击底栏中部按钮」共用这一套分发，
-     * 保证同一种动作在入口不同（顶栏点击 / 底栏双击）时行为完全一致。
+     * The three top-bar slots and "double-tap the middle bottom-bar button" share this dispatch,
+     * ensuring the same action behaves identically across different entries (top-bar tap / bottom-bar double tap).
      */
     private fun runFreeformAction(action: TopBarAction) {
         when (action) {
@@ -277,20 +277,20 @@ class FreeformView(
             TopBarAction.SCREENSHOT -> screenshot()
             TopBarAction.ROTATE -> rotateFreeform()
             TopBarAction.CENTER -> toScreenCenter()
-            TopBarAction.NONE -> { /* 无动作 */ }
+            TopBarAction.NONE -> { /* no action */ }
         }
     }
 
-    /** 当前小窗形态（横屏/竖屏）对应的用户设定长边。 */
+    /** The user-set long edge for the current freeform-window form (landscape/portrait). */
     private fun userHeightForCurrentForm(): Int {
         if (virtualDisplayRotation == VIRTUAL_DISPLAY_ROTATION_LANDSCAPE) {
-            //横屏没单独调过就沿用竖屏那份，这样「旋转」本身永远不会改变用户设定的尺寸
+            //If not tuned separately in landscape, reuse the portrait copy, so "rotate" itself never changes the user-set size
             return if (userLandscapeHeight > 0) userLandscapeHeight else userPortraitHeight
         }
         return userPortraitHeight
     }
 
-    /** 记下用户为当前小窗形态设定的长边。 */
+    /** Records the long edge the user set for the current freeform-window form. */
     private fun setUserHeightForCurrentForm(value: Int) {
         if (virtualDisplayRotation == VIRTUAL_DISPLAY_ROTATION_LANDSCAPE) {
             userLandscapeHeight = value
@@ -299,7 +299,7 @@ class FreeformView(
         }
     }
 
-    /** 用户没调过时的默认长边（与开屏尺寸同一套算法，随物理屏幕方向变）。 */
+    /** The default long edge when the user hasn't tuned it (same algorithm as the launch size, varies with physical screen orientation). */
     private fun defaultUserHeight(): Int {
         return if (FreeformHelper.screenIsPortrait(screenRotation)) {
             (config.maxHeight * 0.75).roundToInt()
@@ -308,7 +308,7 @@ class FreeformView(
         }
     }
 
-    /** 小窗内返回。 */
+    /** Go back inside the freeform window. */
     private fun pressBack() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MiFreeform.me?.getControlService()?.pressBack(virtualDisplay.display.displayId)
@@ -317,36 +317,36 @@ class FreeformView(
         }
     }
 
-    /** 截屏：保存小窗当前画面到系统截图目录。 */
+    /** Screenshot: save the freeform window's current frame to the system screenshots directory. */
     private fun screenshot() {
         ScreenshotHelper.capture(context, binding.textureView, config.packageName)
     }
 
-    /** 旋转小窗方向（竖屏/横屏切换）。 */
+    /** Rotates the freeform window's orientation (toggle portrait/landscape). */
     private fun rotateFreeform() {
         virtualDisplayRotation = if (virtualDisplayRotation == VIRTUAL_DISPLAY_ROTATION_PORTRAIT) {
             VIRTUAL_DISPLAY_ROTATION_LANDSCAPE
         } else {
             VIRTUAL_DISPLAY_ROTATION_PORTRAIT
         }
-        //用户手动旋转：标记为覆盖，后续应用上报的方向不再把窗口复位（收起/恢复也保持该方向）
+        //Manual user rotation: mark as override, so the app-reported orientation no longer resets the window (also keeps this orientation across collapse/restore)
         manualRotationOverride = true
         onFreeFormRotationChanged()
     }
 
-    //新增 手动调整小窗方向 q220904.7
+    //Added: manually adjust the freeform window orientation q220904.7
     /**
-     * 底栏左圆点：按住滑动等比例缩放。
+     * Bottom-bar left dot: hold and slide to scale proportionally.
      *
-     * 行为与按住左边缘缩放（[handleScaleLeft]）完全一致，
-     * 保证「按圆点」和「按边缘」是同一种缩放手感。
-     * 左圆点在窗口左下角：往下拉 = 放大，往上推 = 缩小；
-     * 宽度始终按小窗宽高比从高度算出来（横向分量不单独改宽度），所以旋转往返不会变样。
+     * Behaves exactly like holding the left edge to scale ([handleScaleLeft]),
+     * ensuring "press the dot" and "press the edge" have the same scaling feel.
+     * The left dot is at the window's bottom-left corner: pull down = enlarge, push up = shrink;
+     * the width is always computed from the height by the freeform aspect ratio (the horizontal component doesn't change width separately), so rotation round-trips won't distort.
      */
     private fun handleDotScaleLeft(dx: Float, dy: Float) {
         val tempHeight = freeformHeight + dy
-        //宽度一律由高度按固定比例算出来（与按住边缘缩放一致），否则斜着拉会让宽高比
-        //悄悄跑偏，旋转时按比例重算宽度就会把用户的小窗变成另一个大小。
+        //Width is always computed from the height by a fixed ratio (same as edge-held scaling), otherwise dragging diagonally
+        //silently skews the aspect ratio, and recomputing width by that ratio during rotation would turn the user's freeform window into a different size.
         val tempWidth = (tempHeight * config.widthHeightRatio).roundToInt()
         if (tempHeight > MIN_HEIGHT && tempHeight <= config.maxHeight && tempWidth > MIN_WIDTH && tempWidth < realScreenWidth) {
             freeformHeight = tempHeight.roundToInt()
@@ -356,14 +356,14 @@ class FreeformView(
     }
 
     /**
-     * 底栏右圆点：按住滑动等比例缩放。
+     * Bottom-bar right dot: hold and slide to scale proportionally.
      *
-     * 行为与按住右边缘缩放（[handleScaleRight]）完全一致。
-     * 右圆点在窗口右下角：往下拉 = 放大，往上推 = 缩小；宽度同样按高比例从高度算出来。
+     * Behaves exactly like holding the right edge to scale ([handleScaleRight]).
+     * The right dot is at the window's bottom-right corner: pull down = enlarge, push up = shrink; width is likewise computed from the height by ratio.
      */
     private fun handleDotScaleRight(dx: Float, dy: Float) {
         val tempHeight = freeformHeight + dy
-        //同 handleDotScaleLeft：宽度由高度算出来，保持宽高比
+        //Same as handleDotScaleLeft: width is computed from the height, keeping the aspect ratio
         val tempWidth = (tempHeight * config.widthHeightRatio).roundToInt()
         if (tempHeight > MIN_HEIGHT && tempHeight <= config.maxHeight && tempWidth > MIN_WIDTH && tempWidth < realScreenWidth) {
             freeformHeight = tempHeight.roundToInt()
@@ -374,7 +374,7 @@ class FreeformView(
 
     private val middleGestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDoubleTap(e: MotionEvent): Boolean {
-            //双击底栏中部按钮：执行设置里配置的动作（默认旋转），与顶栏槽位共用同一分发
+            //Double-tap the middle bottom-bar button: run the action configured in settings (default rotate), sharing the same dispatch as top-bar slots
             runFreeformAction(config.bottomDoubleTapAction)
             return false
         }
@@ -389,26 +389,26 @@ class FreeformView(
         }
         try {
             activityTaskManager = IActivityTaskManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("activity_task")))
-            //目前仅支持Android Q及以上版本
+            //Currently only supports Android Q and above
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 activityTaskManager?.registerTaskStackListener(taskStackListener)
             }
             activityManager = IActivityManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("activity")))
         }catch (e: Exception) {
-            // 拿不到 activity_task 就没有 taskStackListener，小窗不会跟随任务移动/旋转，
-            // 但界面看起来只是「有点不对」，不留痕根本查不出来。
+            // Without activity_task there's no taskStackListener, so the freeform window won't follow task moves/rotations,
+            // but the UI just looks "a bit off" and it can't be traced without a log.
             Log.w(TAG, "init_activity_task_service_failed pkg=${config.packageName}", e)
         }
         try {
             inputManager = IInputManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("input")))
         }catch (e: Exception) {
-            // input 服务拿不到时触控是静默失效的（这里用的是安全调用，不会崩），必须记下来。
+            // When the input service is unavailable, touch injection fails silently (safe calls here, so no crash); we must record it.
             Log.w(TAG, "init_input_service_failed pkg=${config.packageName}", e)
         }
         try {
             iWindowManager = IWindowManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService("window")))
         } catch (e: Exception) {
-            // 拿不到 window 服务就注册不了 rotation watcher，小窗不会跟转屏。
+            // Without the window service we can't register the rotation watcher, so the freeform window won't follow screen rotation.
             Log.w(TAG, "init_window_service_failed pkg=${config.packageName}", e)
         }
     }
@@ -421,14 +421,14 @@ class FreeformView(
         realScreenHeight = context.resources.displayMetrics.heightPixels
 
         config.freeformDpi = FreeformHelper.getScreenDpi(context)
-        //开屏：竖屏那份的基准就是开屏尺寸，横屏那份先留空（=沿用竖屏），等用户亲手缩放才落笔。
-        //关闭小窗后对象销毁，两份记忆一起消失。
+        //On launch: the portrait copy's baseline is the launch size, the landscape copy stays empty (= reuse portrait) until the user scales by hand.
+        //After closing the freeform window the object is destroyed and both memories vanish together.
         freeformHeight = defaultUserHeight()
         freeformWidth = (freeformHeight * config.widthHeightRatio).roundToInt()
         userPortraitHeight = freeformHeight
         userLandscapeHeight = 0
 
-        //优化 QQ和微信也支持缩放了 q220917.1
+        //Optimization: QQ and WeChat now support scaling too q220917.1
         freeformScreenHeight = FreeformHelper.getDefaultHeight(context, defaultDisplay, config.widthHeightRatio)
         if (!config.useCustomConfig) {
             freeformScreenHeight -=
@@ -442,7 +442,7 @@ class FreeformView(
         minFreeformScreenSize = freeformScreenWidth
 
         if (config.useCustomConfig) return
-        //---------------客制化配置-----------------
+        //---------------custom configuration-----------------
 
         config.rememberPosition = viewModel.getBooleanSp("remember_freeform_position", false)
         if (config.rememberPosition) {
@@ -461,19 +461,19 @@ class FreeformView(
             } else {
                 viewModel.getIntSp(REMEMBER_LAND_HEIGHT, freeformHeight)
             }
-            //修复 尝试修复记录的小窗大小异常的问题 q220904.1
+            //Fix: try to fix the abnormal recorded freeform-window size q220904.1
             rememberHeight = min(max(MIN_HEIGHT, rememberHeight), config.maxHeight)
             freeformHeight = rememberHeight
             freeformWidth = (freeformHeight * config.widthHeightRatio).roundToInt()
-            //记住的位置里存的就是用户设定值（见 destroy() 落库处）。
-            //这里存的是物理屏幕方向的一个值，就是开屏该用的那个长边，所以只给竖屏那份起步；
-            //横屏那份留空，等用户在横屏下亲手调过再记，没调过就一直沿用竖屏的尺寸。
+            //The remembered position stores the user-set value (see the persist point in destroy()).
+            //What's stored here is one value for the physical screen orientation, i.e. the long edge launch should use, so we only seed the portrait copy;
+            //the landscape copy stays empty, recorded only after the user tunes it by hand in landscape, and reuses the portrait size until then.
             userPortraitHeight = rememberHeight
             userLandscapeHeight = 0
             scaleX = freeformHeight / maxFreeformScreenSize.toFloat()
         }
 
-        //修复 开启记录位置选项后触控错位的问题 q220925.3
+        //Fix: touch misalignment after enabling the remember-position option q220925.3
         scaleX = freeformHeight / maxFreeformScreenSize.toFloat()
         scaleY = scaleX
 
@@ -492,8 +492,8 @@ class FreeformView(
         binding.bottomBar.middleView.setOnTouchListener(this)
         binding.bottomBar.rightView.setOnTouchListener(this)
 
-        // 顶栏：与底栏同一套写法（三个分段 + GestureDetector）。
-        // 具体执行什么动作由设置决定，图标也跟着设置刷新。
+        // Top bar: same pattern as the bottom bar (three segments + GestureDetector).
+        // What each action does is decided by settings, and the icons refresh to match.
         binding.topBar.topBarMinimize.setOnTouchListener(this)
         binding.topBar.topBarFullScreen.setOnTouchListener(this)
         binding.topBar.topBarClose.setOnTouchListener(this)
@@ -507,9 +507,9 @@ class FreeformView(
             binding.textureView.setOnTouchListener(touchListenerPreQ)
         }
 
-        // 小窗画面从一开始就完全不透明：开屏 loading 已删除。
-        // 以前这里把 alpha 置 0，再靠首帧计数渐变到 1，应用收起恢复后不重绘时
-        // 永远等不到那几帧，小窗就停在透明状态，看起来就是白屏。
+        // The freeform content is fully opaque from the start: the launch loading is removed.
+        // Previously this set alpha to 0 and relied on first-frame counting to fade to 1; after an app collapses and restores without redrawing,
+        // those frames never arrive and the freeform window stays transparent, which looks like a white screen.
         initDisplay()
     }
 
@@ -536,11 +536,11 @@ class FreeformView(
         screenListener.begin(object : ScreenListener.ScreenStateListener {
             override fun onScreenOn() {}
 
-            //关闭屏幕隐藏小窗
+            //Screen off hides the freeform window
             override fun onScreenOff() {
-                //挂起状态无需更新
-                //修复 在有正在运行程序的情况下锁屏，米窗崩溃的问题 q220902.1
-                //优化 锁屏后小窗的状态 q220917.3
+                //Suspended state needs no update
+                //Fix: MiFreeform crashed when locking the screen with a running program q220902.1
+                //Optimization: freeform-window state after locking the screen q220917.3
                 if (!isBackstage) {
                     binding.root.alpha = 0f
                     windowLayoutParams.flags =
@@ -552,9 +552,9 @@ class FreeformView(
                 }
             }
 
-            //解锁恢复小窗
+            //Unlock restores the freeform window
             override fun onUserPresent() {
-                //挂起状态无需更新
+                //Suspended state needs no update
                 if (!isBackstage) {
                     binding.root.alpha = 1f
                     windowLayoutParams.flags =
@@ -580,7 +580,7 @@ class FreeformView(
     }
 
     private fun initTextureViewListener() {
-        //冷启动监听
+        //Cold-start listener
         binding.textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(
                 surface: SurfaceTexture,
@@ -595,7 +595,7 @@ class FreeformView(
                         FreeformHelper.addFreeformToSet(this@FreeformView)
                         firstInit = false
                     }
-                    //启动失败
+                    //Launch failed
                     else {
                         destroy()
                     }
@@ -615,14 +615,14 @@ class FreeformView(
             }
 
             override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
-                // 画面直接显示，不再做首帧计数 + 淡入，也没有 loading 动画。
+                // Content is shown directly, no more first-frame counting + fade-in, and no loading animation.
             }
         }
     }
 
     /**
-     * 窗口尺寸比画面尺寸多出来的装饰，与教学小窗共用同一套算法，
-     * 具体包含哪几项见 [FreeformWindowGeometry]。
+     * The decoration by which the window size exceeds the content size; shares the same algorithm as the teaching freeform window,
+     * see [FreeformWindowGeometry] for exactly which items it includes.
      */
     private val windowChromeWidth: Int
         get() = FreeformWindowGeometry.chromeWidth(context)
@@ -631,17 +631,17 @@ class FreeformView(
         get() = FreeformWindowGeometry.chromeHeight(context)
 
     private fun showWindow() {
-        // 先弄清楚这次有资格用哪种窗口类型，再决定要不要调 addView。
-        // 实测（HyperOS 14）：在没有悬浮窗权限的状态下调 addView，会被系统记成一次
-        // 「被拒的非系统悬浮窗请求」，而这个进程之后创建的**所有**非系统悬浮窗都会被
-        // 永久置为 mForceHideNonSystemOverlayWindow=true——重新授权也不解除，只有重启进程才恢复。
-        // 旧代码不管三七二十一先试 TYPE_ACCESSIBILITY_OVERLAY，而本机没开无障碍服务，
-        // 于是每次开窗都先白抛一个 BadTokenException；未授权时那一次正好制造上述毒化。
+        // First work out which window type this attempt is eligible for, then decide whether to call addView.
+        // Measured (HyperOS 14): calling addView without the overlay permission is recorded by the system as
+        // a "rejected non-system overlay request", and then **all** non-system overlay windows created by this process afterward
+        // get permanently set to mForceHideNonSystemOverlayWindow=true—re-granting doesn't clear it, only a process restart recovers.
+        // The old code blindly tried TYPE_ACCESSIBILITY_OVERLAY first regardless, and without the accessibility service enabled here,
+        // every open first threw a needless BadTokenException; when unauthorized, that very attempt caused the poisoning above.
         val overlayAllowed = Settings.canDrawOverlays(context)
         val accessibilityOverlayUsable = isAccessibilityServiceEnabled()
 
         if (!overlayAllowed && !accessibilityOverlayUsable) {
-            // 两种类型都没资格：一次都不要试，直接告诉用户缺什么。
+            // Neither type is eligible: don't try even once, just tell the user what's missing.
             Log.w(TAG, "start_rejected no_overlay_permission pkg=${config.packageName}")
             requestOverlayPermissionUi(destroyFirst = true)
             return
@@ -676,18 +676,18 @@ class FreeformView(
 
         setWindowNoUpdateAnimation()
 
-        //恢复记录的位置
+        //Restore the recorded position
         if (config.rememberPosition) {
             windowLayoutParams.apply {
                 x = config.rememberX
                 y = config.rememberY
             }
         } else {
-            //横屏移动到屏幕左侧显示小窗
+            //In landscape, move to the left of the screen to show the freeform window
             if (screenRotation == Surface.ROTATION_90 || screenRotation == Surface.ROTATION_270) {
                 windowLayoutParams.apply {
                     x = (width - realScreenWidth) / 2
-                    //往上移动一些
+                    //Move up a bit
                     y = 0
                 }
             }
@@ -697,28 +697,28 @@ class FreeformView(
             windowManager.addView(binding.root, windowLayoutParams)
             windowAttached = true
         } catch (e: Exception) {
-            // 走到这里说明这个窗口类型被系统拒了（无障碍服务实际没生效、窗口数上限等都会到这）。
+            // Reaching here means this window type was rejected by the system (accessibility service not actually active, window-count cap, etc.).
             Log.w(TAG, "add_view_failed pkg=${config.packageName} type=${windowLayoutParams.type}", e)
             windowAttached = false
             try {
                 windowManager.removeViewImmediate(binding.root)
             } catch (removeException: Exception) {
-                // 半挂着的窗口不清掉就会变成僵尸窗口（有 surface、不可见、没人回收）。
+                // A half-attached window left uncleared becomes a zombie window (has a surface, invisible, unreclaimed).
                 Log.w(TAG, "remove_half_attached_view_failed pkg=${config.packageName}", removeException)
             }
 
             if (overlayAllowed) {
-                // 只有确认有悬浮窗权限才允许退回去重试一次：没权限时第二次 addView
-                // 又是一次「被拒请求」，会把整个进程的悬浮窗都毒掉。
+                // Only fall back and retry once when we're sure the overlay permission is held: without permission a second addView
+                // is another "rejected request" and would poison all overlays in the process.
                 try {
                     windowManager.addView(binding.root, windowLayoutParams.apply {
                         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                     })
                     windowAttached = true
                 } catch (fallbackException: Exception) {
-                    // 两次 addView 全部失败。以前这里不把异常接住，它会一路穿出
-                    // FreeformView.<init> 到调用方，而已经建好的虚拟屏没人 release
-                    // ——就是实测看到的「屏幕上一个小窗都没有，却占着一个虚拟屏」。
+                    // Both addViews failed. Previously the exception here wasn't caught, so it propagated
+                    // out of FreeformView.<init> to the caller, while the already-built virtual display was never released
+                    // —that's the measured "not a single freeform window on screen, yet one virtual display is occupied".
                     Log.e(TAG, "add_view_fallback_failed pkg=${config.packageName}", fallbackException)
                     DiagnosticsLog.recordRes(
                         context, "overlay_rejected",
@@ -727,7 +727,7 @@ class FreeformView(
                     destroy()
                 }
             } else {
-                // 有资格试无障碍窗口、却没有悬浮窗权限，所以没有退路可试。
+                // Eligible to try the accessibility window type but has no overlay permission, so there's no fallback to try.
                 Log.e(TAG, "add_view_rejected_no_fallback pkg=${config.packageName}", e)
                 DiagnosticsLog.recordRes(
                     context, "overlay_rejected",
@@ -737,20 +737,20 @@ class FreeformView(
             }
         }
 
-        // addView 成功并不等于小窗真的显示出来了：窗口的可见性是 addView 那一刻由系统
-        // 裁决的、之后不会再改。所以挂一个看门狗，回头确认系统真的在画这个窗口。
+        // addView succeeding doesn't mean the freeform window really displayed: the window's visibility is decided by the system
+        // at the instant of addView and never changes afterward. So we attach a watchdog to confirm later that the system is actually drawing this window.
         if (windowAttached) {
             binding.root.postDelayed(surfaceWatchdog, SURFACE_WATCHDOG_MS)
         }
     }
 
     /**
-     * 缺悬浮窗权限时告知用户，并把已经建起来的东西拆干净。
+     * Tells the user the overlay permission is missing and tears down everything already built.
      *
-     * 以前这里还会顺手 `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)` 把用户送去授权，
-     * 而真机实验定下的就是这一跳：真实拒绝分支 4/4 把全进程悬浮窗毒掉，
-     * 只去掉跳转的对照 0/4（HyperOS 14，理由与数据见 [PermissionUtils.guideToGrantOverlayPermission]）。
-     * 所以告知里不再有任何自动跳转，授权入口改成常驻通知上的「去授权」（用户主动点）。
+     * Previously this also did `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)` to send the user to grant it,
+     * and real-device experiments pinned that very jump as the cause: the real rejection branch poisoned all overlays in the process 4/4,
+     * while the jump-removed control was 0/4 (HyperOS 14, see [PermissionUtils.guideToGrantOverlayPermission] for rationale and data).
+     * So the notice has no automatic jump anymore; the grant entry became a "grant" button on the ongoing notification (user-initiated).
      */
     private fun requestOverlayPermissionUi(destroyFirst: Boolean) {
         if (destroyFirst) {
@@ -760,7 +760,7 @@ class FreeformView(
     }
 
     /**
-     * 本应用是否作为无障碍服务被系统启用。只有这时 TYPE_ACCESSIBILITY_OVERLAY 才是合法的窗口类型。
+     * Whether this app is enabled by the system as an accessibility service. Only then is TYPE_ACCESSIBILITY_OVERLAY a legitimate window type.
      */
     private fun isAccessibilityServiceEnabled(): Boolean {
         return try {
@@ -772,36 +772,36 @@ class FreeformView(
             val short = mine.flattenToShortString()
             enabled.split(':').any { it.equals(full, true) || it.equals(short, true) }
         } catch (e: Exception) {
-            // 读不到就当作没开，退回普通悬浮窗类型；但必须留痕，否则只能看到「换了种窗口类型」。 
+            // If we can't read it, treat it as off and fall back to the normal overlay type; but we must leave a trace, otherwise all we see is "switched to another window type". 
             Log.w(TAG, "read_accessibility_state_failed pkg=${config.packageName}", e)
             false
         }
     }
 
     /**
-     * 问一次系统「我们自己的悬浮窗里有没有被强制隐藏的」。
+     * Asks the system once whether any of our own overlay windows is force-hidden.
      *
-     * 判据是进程级的（我们这个应用的任一窗口命中就算）：实测隐藏就是整个进程一起被隐藏，
-     * 而不是单个窗口；而窗口在被隐藏时本地状态全正常，区分不到具体哪一个，所以不强行区分。
+     * The criterion is process-level (any window of our app matching counts): measured, hiding affects the whole process at once,
+     * not a single window; and while hidden a window's local state is entirely normal, so we can't distinguish which one and don't force it.
      *
-     * @param first 第一次探到隐藏不马上拆窗，隔一段时间再确认一次，避免误拆只是瞬时隐藏的窗口
+     * @param first the first probe of hidden doesn't tear down immediately; wait an interval and confirm once more, to avoid mis-tearing a window that was only transiently hidden
      */
     private fun probeWindowDisplayed(first: Boolean) {
         if (isDestroyed || isBackstage) return
 
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         if (powerManager?.isInteractive != true) {
-            // 息屏时系统本来就不画，等亮屏再看一眼，别在锁屏里误报
+            // With the screen off the system isn't drawing anyway; wait for it to wake and check again, don't misreport inside the lock screen
             binding.root.postDelayed(surfaceWatchdog, SURFACE_WATCHDOG_MS)
             return
         }
 
         val service = MiFreeform.me?.getControlService() ?: return
 
-        // 本地问不出「系统有没有在画我的窗口」：addView 不报错、TextureView 照样拿到纹理、
-        // windowVisibility 也是自己想要的值——实测被隐藏的窗口这些全都正常。
-        // 唯一可靠的判据在 WMS 那边，而我们有 system uid 的 shell 通道；
-        // execShell 只回传退出码，所以把判据压成一个布尔：命中就 exit 0。
+        // Locally we can't tell "is the system drawing my window": addView doesn't error, TextureView still gets its texture,
+        // and windowVisibility is the value we set—measured, all these are normal even for a hidden window.
+        // The only reliable criterion is on the WMS side, and we have a system-uid shell channel;
+        // execShell only returns an exit code, so we compress the criterion into a boolean: match means exit 0.
         scope.launch(Dispatchers.IO) {
             val hiddenBySystem = try {
                 service.execShell(HIDDEN_WINDOW_CHECK_COMMAND, false)
@@ -821,10 +821,10 @@ class FreeformView(
 
                 Log.e(TAG, "window_not_displayed pkg=${config.packageName} type=${windowLayoutParams.type}")
 
-                // 同样是「窗口在、但系统不画」，成因其实分两类，给用户的话完全相反：
-                // 一类是小窗里那个应用自己带 HIDE_NON_SYSTEM_OVERLAY_WINDOWS（Android 12+ 防劫持，
-                // 原版 A14 实测：退出它就恢复，重启反倒没用）；另一类点不出名，只能走老文案。
-                // 所以拆窗之前先点一次名，再决定报哪一条。
+                // It's the same "window exists but the system isn't drawing it", yet there are really two causes with opposite messages to the user:
+                // one is the app inside the freeform window itself carrying HIDE_NON_SYSTEM_OVERLAY_WINDOWS (Android 12+ anti-hijack,
+                // measured on stock A14: exiting it recovers, restarting doesn't); the other type can't be named, so it uses the old text.
+                // So before tearing down we name it once, then decide which entry to report.
                 val culprit = probeHideRequester()
                 if (culprit.isNotEmpty()) {
                     Log.e(TAG, "window_hidden_by_app_request pkg=${config.packageName} culprit=$culprit")
@@ -850,11 +850,11 @@ class FreeformView(
     }
 
     /**
-     * 命中强制隐藏之后，再问一句「是哪个应用要求的」。
+     * After a force-hide is detected, ask once more "which app requested it".
      *
-     * 判据是别的窗口带 HIDE_NON_SYSTEM_OVERLAY_WINDOWS：原版 A14 实测系统设置页就带这个 flag，
-     * 而且它即使跑在虚拟屏上，被隐藏的也是我们主屏上的悬浮窗——跨显示屏、全局生效。
-     * 查不到就回空串，调用方走兜底文案；这一步失败不影响拆窗本身。
+     * The criterion is another window carrying HIDE_NON_SYSTEM_OVERLAY_WINDOWS: measured on stock A14 the system settings page carries this flag,
+     * and even when it runs on a virtual display, it's our main-screen overlays that get hidden—cross-display, globally effective.
+     * If nothing is found return an empty string and the caller uses the fallback text; a failure here doesn't affect tearing down the window.
      */
     private fun probeHideRequester(): String {
         val service = MiFreeform.me?.getControlService() ?: return ""
@@ -868,12 +868,12 @@ class FreeformView(
     }
 
     /**
-     * 把点名点出来的包名换成应用显示名，只给用户看的那一份换。
+     * Converts the named package names to app display labels, only for the part shown to the user.
      *
-     * Toast 在 A14 上实测只有两行、超出就省略号截掉，而 com.android.settings 这种包名
-     * 一个就吃掉 20 个字符，既占额度用户也读不懂；换成「设置 / Settings」省一半以上。
-     * 日志和诊断记录仍然记原始包名——那两处是要拿来定位的，不能被显示名替代。
-     * 取不到显示名（应用被卸载、无 info）就退回包名，点名这一步绝不因为翻译失败而丢掉。
+     * Measured on A14 the Toast only has two lines and truncates with ellipsis beyond that, and a package name like com.android.settings
+     * alone eats 20 characters—using budget the user can't read; switching to the app's display label ("Settings") saves more than half.
+     * Logs and diagnostic records still keep the original package name—those two are for locating issues and mustn't be replaced by display labels.
+     * If no display label is available (app uninstalled, no info) fall back to the package name; naming must never be lost due to a translation failure.
      */
     private fun friendlyCulprit(culprit: String): String =
         culprit.split("、").filter { it.isNotBlank() }.joinToString("、") { name ->
@@ -888,7 +888,7 @@ class FreeformView(
         }
 
     /**
-     * 禁用更新过渡动画
+     * Disable the update transition animation
      */
     private fun setWindowNoUpdateAnimation() {
         val classname = "android.view.WindowManager\$LayoutParams"
@@ -901,8 +901,8 @@ class FreeformView(
             privateFlagsValue = privateFlagsValue or noAnimFlag
             privateFlags.setInt(windowLayoutParams, privateFlagsValue)
         } catch (e: Exception) {
-            // PRIVATE_FLAG_NO_MOVE_ANIMATION 是隐藏字段，高版本反射失败很常见，
-            // 失败后果只是拖窗带过渡动画，但必须能查到是不是这条路断了。
+            // PRIVATE_FLAG_NO_MOVE_ANIMATION is a hidden field; reflection failing on higher versions is common,
+            // and the only consequence is the drag carrying a transition animation, but we must be able to tell whether this path broke.
             Log.w(TAG, "disable_move_animation_flag_failed", e)
         }
     }
@@ -923,9 +923,9 @@ class FreeformView(
     }
 
     private fun onFreeFormRotationChanged() {
-        //先把长边恢复到「转过去之后这个形态」的用户设定值，再按新方向摆放：
-        //上一次转横屏时为塞进屏幕做的夹紧不该被当成新的尺寸，否则转回去就丢了高度；
-        //而横屏下调出来的尺寸也不该被竖屏的尺寸换算掉，所以横竖各自记一份。
+        //First restore the long edge to the user-set value for "the form after rotating over", then lay out by the new orientation:
+        //the clamp made last time to fit landscape into the screen shouldn't be taken as a new size, otherwise turning back loses the height;
+        //and the size tuned in landscape shouldn't be recomputed away by the portrait size, so portrait and landscape each remember their own.
         val remembered = userHeightForCurrentForm()
         freeformHeight = if (remembered > 0) remembered else defaultUserHeight()
         freeformWidth = (freeformHeight * config.widthHeightRatio).roundToInt()
@@ -943,8 +943,8 @@ class FreeformView(
             freeformScreenHeight = tempWidth
             freeformScreenWidth = tempHeight
 
-            //优化 小窗内部旋转时，如果旋转后的尺寸大于屏幕尺寸，则进行调整 q220904.3
-            //小窗横屏-物理屏幕竖屏
+            //Optimization: when rotating inside the freeform window, adjust if the rotated size exceeds the screen q220904.3
+            //freeform landscape - physical screen portrait
             if (FreeformHelper.screenIsPortrait(screenRotation)) {
                 if (freeformHeight > realScreenWidth) {
                     freeformHeight = realScreenWidth
@@ -955,14 +955,14 @@ class FreeformView(
             }
         }
 
-        //旋转只改窗口外形，尽量不断面：先把纹理缓冲尺寸切到新方向，再 resize 虚拟屏，
-        //避免用旧 buffer 尺寸造成中间黑帧；全程不动 textureView.alpha、不重建 Surface。
+        //Rotation only changes the window's shape; try not to break the image: first switch the texture buffer size to the new orientation, then resize the virtual display,
+        //avoiding a black intermediate frame caused by the old buffer size; throughout we don't touch textureView.alpha nor rebuild the Surface.
         if (binding.textureView.isAvailable) {
             binding.textureView.surfaceTexture?.setDefaultBufferSize(freeformScreenWidth, freeformScreenHeight)
         }
         resizeVirtualDisplay()
         updateWindowSize(false)
-        //旋转后按当前物理屏幕夹紧，保证小窗完整可见、不被推出屏外
+        //After rotation clamp to the current physical screen, ensuring the freeform window stays fully visible and isn't pushed off-screen
         clampFreeformToScreen()
     }
 
@@ -977,11 +977,11 @@ class FreeformView(
 
         config.maxHeight = FreeformHelper.getDefaultHeight(context, defaultDisplay, config.widthHeightRatio)
 
-        //该赋值是不需要的，maxFreeformScreenSize只需要与max(freeformScreenHeight, freeformScreenWidth)同步即可 q220908.1
+        //This assignment is unnecessary; maxFreeformScreenSize only needs to stay in sync with max(freeformScreenHeight, freeformScreenWidth) q220908.1
         //maxFreeformScreenSize = config.maxHeight
 
-        //物理转屏会重算 config.maxHeight。用户没亲手调过尺寸时跟着新默认值走；
-        //调过就沿用「当前小窗形态」的那一份设定（夹到新的上限内），不再无条件覆盖用户的尺寸。
+        //A physical screen rotation recomputes config.maxHeight. When the user hasn't tuned the size by hand, follow the new default;
+        //once tuned, reuse the "current freeform-window form"'s setting (clamped to the new cap), no longer unconditionally overwriting the user's size.
         val remembered = userHeightForCurrentForm()
         freeformHeight = if (remembered > 0) min(max(MIN_HEIGHT, remembered), config.maxHeight) else defaultUserHeight()
         freeformWidth = (freeformHeight * config.widthHeightRatio).roundToInt()
@@ -998,7 +998,7 @@ class FreeformView(
             scaleX = freeformHeight / maxFreeformScreenSize.toFloat()
             scaleY = scaleX
 
-            //修复转屏后屏幕dpi不正确的问题 q220908.2
+            //Fix: incorrect screen dpi after rotation q220908.2
             val tempFreeformScreenHeight = freeformScreenHeight
             val tempFreeformScreenWidth = freeformScreenWidth
 
@@ -1033,12 +1033,12 @@ class FreeformView(
     }
 
     /**
-     * 旋转后把小窗夹紧到当前物理屏幕内，保证完整可见、不被推出屏外。
+     * After rotation, clamp the freeform window into the current physical screen, ensuring it's fully visible and not pushed off-screen.
      *
-     * 窗口宽/高与 freeformHeight 是线性关系（窗口尺寸 = freeform 尺寸 + 固定装饰），
-     * 所以直接解出不溢出时的 freeformHeight 上限并一次到位；
-     * 之前按最小缩放比例逐轮缩的写法受迭代上限限制，会残留 1px 溢出。
-     * 最后再把窗口位置 x/y 夹到 [0, 屏幕宽-窗口宽]/[0, 屏幕高-窗口高]。
+     * Window width/height is linear in freeformHeight (window size = freeform size + fixed decoration),
+     * so we directly solve the freeformHeight cap that doesn't overflow and set it in one pass;
+     * the previous per-round shrink by minimum scale ratio was limited by an iteration cap and could leave a 1px overflow.
+     * Finally clamp the window position x/y into [0, screen width - window width]/[0, screen height - window height].
      */
     private fun clampFreeformToScreen() {
         val scaleExtra = windowChromeWidth
@@ -1046,8 +1046,8 @@ class FreeformView(
         val portraitWindow = virtualDisplayRotation == VIRTUAL_DISPLAY_ROTATION_PORTRAIT
         val ratio = if (config.widthHeightRatio > 0f) config.widthHeightRatio else 1f
 
-        //竖屏窗口：宽 = freeformWidth + scaleExtra，高 = freeformHeight + chromeHeight
-        //横屏窗口：宽 = freeformHeight + scaleExtra，高 = freeformWidth + chromeHeight
+        //Portrait window: width = freeformWidth + scaleExtra, height = freeformHeight + chromeHeight
+        //Landscape window: width = freeformHeight + scaleExtra, height = freeformWidth + chromeHeight
         val capByWindowWidth = if (portraitWindow) {
             ((realScreenWidth - scaleExtra) / ratio).toInt()
         } else {
@@ -1066,7 +1066,7 @@ class FreeformView(
             scaleY = scaleX
         }
 
-        //用最终的 freeform 尺寸刷新窗口宽高（复用 updateWindowSize 的方向公式）
+        //Refresh the window width/height with the final freeform size (reusing updateWindowSize's orientation formula)
         updateWindowSize(false)
         windowLayoutParams.x = max(0, min(windowLayoutParams.x, realScreenWidth - windowLayoutParams.width))
         windowLayoutParams.y = max(0, min(windowLayoutParams.y, realScreenHeight - windowLayoutParams.height))
@@ -1091,7 +1091,7 @@ class FreeformView(
         }
 
         if (orientationChanged) {
-            //横屏移动到屏幕左侧显示小窗
+            //In landscape, move to the left of the screen to show the freeform window
             if (screenRotation == Surface.ROTATION_90 || screenRotation == Surface.ROTATION_270) {
                 windowLayoutParams.apply {
                     x = (width - realScreenWidth) / 2
@@ -1099,7 +1099,7 @@ class FreeformView(
             }
         }
 
-        //非后台挂起状态才进行刷新
+        //Only refresh when not in the background-suspended state
         if (!isBackstage) {
             windowManager.updateViewLayout(
                 binding.root,
@@ -1109,7 +1109,7 @@ class FreeformView(
     }
 
     /**
-     * 如果小窗无法控制了，可以尝试移动到屏幕中心以控制
+     * If the freeform window becomes uncontrollable, move it to the screen center so it can be controlled.
      */
     override fun toScreenCenter() {
         windowLayoutParams.x = 0
@@ -1125,7 +1125,7 @@ class FreeformView(
             }
             windowAttached = false
         }
-        // 置顶是用户点击触发的高频路径：权限中途被收回时这里会招，不接住就是碰到小窗就闪退。
+        // Bringing to front is a high-frequency path triggered by user taps: it can throw when the permission is revoked midway, and not catching it means crashing whenever the freeform window is touched.
         try {
             windowManager.addView(binding.root, windowLayoutParams)
             windowAttached = true
@@ -1140,11 +1140,11 @@ class FreeformView(
     }
 
     /**
-     * 隐藏小窗到后台
+     * Hide the freeform window into the background
      *
-     * 收起有两种方式，由设置项 minimize_mode 决定：
-     * - MODE_SIDEBAR：收进侧边栏列表（原有行为），完全移除窗口。
-     * - MODE_BALL：变成悬浮球，在屏幕边缘显示应用图标，点击恢复。
+     * There are two collapse ways, decided by the setting minimize_mode:
+     * - MODE_SIDEBAR: collapse into the sidebar list (original behavior), fully removing the window.
+     * - MODE_BALL: turn into a floating ball, showing the app icon at the screen edge, tap to restore.
      */
     private fun toBackstage() {
         if (windowAttached) {
@@ -1159,7 +1159,7 @@ class FreeformView(
         FreeformHelper.addMiniFreeformToSet(this)
         isBackstage = true
 
-        // 悬浮球模式：显示球，侧边栏模式：什么都不显示（原行为）。
+        // Floating-ball mode: show the ball; sidebar mode: show nothing (original behavior).
         if (getMinimizeMode() == MINIMIZE_MODE_BALL) {
             miniBall?.dismiss()
             miniBall = MiniBallView(context, this)
@@ -1167,17 +1167,17 @@ class FreeformView(
         }
     }
 
-    /** 收起方式：0=侧边栏，1=悬浮球。默认悬浮球，与 settings.xml 中 minimize_mode 的 defaultValue 一致。 */
+    /** Collapse mode: 0=sidebar, 1=floating ball. Defaults to floating ball, matching minimize_mode's defaultValue in settings.xml. */
     private fun getMinimizeMode(): Int {
         val sp = context.getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
         return sp.getInt(KEY_MINIMIZE_MODE, MINIMIZE_MODE_BALL)
     }
 
     /**
-     * 从后台恢复
+     * Restore from the background
      */
     override fun fromBackstage() {
-        // 悬浮球模式下，恢复小窗时要先把球收掉。
+        // In floating-ball mode, restore the freeform window only after dismissing the ball.
         miniBall?.dismiss()
         miniBall = null
         try {
@@ -1191,15 +1191,15 @@ class FreeformView(
             )
         }
 
-        // 收起再恢复时窗口是重新创建的，同样可能被系统藏着，看门狗重新上班
+        // On collapse-then-restore the window is recreated and may likewise get hidden by the system, so the watchdog goes back on duty
         binding.root.removeCallbacks(surfaceWatchdog)
         binding.root.removeCallbacks(surfaceWatchdogConfirm)
         binding.root.postDelayed(surfaceWatchdog, SURFACE_WATCHDOG_MS)
 
-        // 修复：收起再还原后小窗变透明 / 白屏。
-        // toBackstage 走 removeViewImmediate，TextureView 的 SurfaceTexture 会被销毁；
-        // 重新 addView 时系统会新建一个 SurfaceTexture，但旧的虚拟屏 Surface
-        // 还指向已销毁的那一个，画面就一直是空的。这里重新把虚拟屏绑到新纹理上。
+        // Fix: the freeform window turns transparent / white after collapse-then-restore.
+        // toBackstage goes through removeViewImmediate, which destroys the TextureView's SurfaceTexture;
+        // on re-addView the system creates a new SurfaceTexture, but the old virtual-display Surface
+        // still points at the destroyed one, so the content stays empty. Here we rebind the virtual display to the new texture.
         resetSurfaceForRestore()
 
         FreeformHelper.removeMiniFreeformFromSet(this)
@@ -1208,13 +1208,13 @@ class FreeformView(
     }
 
     /**
-     * 恢复小窗时重新绑定画面。
+     * Rebinds the content when restoring the freeform window.
      *
-     * 必须在 addView 之后调用：此时 TextureView 才可能拿到新的 SurfaceTexture。
-     * 如果这一刻纹理还不可用，什么都不做就行——系统随后会回调
-     * onSurfaceTextureAvailable，那里会用同一个公式重新绑上虚拟屏。
-     * 不再像以前那样把 initFinish 置回 false 等首帧渐变 alpha：
-     * 应用恢复后不重绘时那些帧根本不会来，小窗会永久停在透明（白屏）状态。
+     * Must be called after addView: only then can the TextureView possibly have a new SurfaceTexture.
+     * If the texture isn't available at this moment, do nothing—the system will soon call back
+     * onSurfaceTextureAvailable, which rebinds the virtual display with the same formula.
+     * We no longer reset initFinish to false and wait for first frames to fade alpha as before:
+     * when a restored app doesn't redraw, those frames never arrive and the freeform window stays permanently transparent (white screen).
      */
     private fun resetSurfaceForRestore() {
         try {
@@ -1228,8 +1228,8 @@ class FreeformView(
                 }
             }
 
-            // 锁屏时根容器会被置成透明，而挂起状态下那个分支不会跑，
-            // 这里兜底把根容器恢复成不透明。
+            // When locked, the root container gets set transparent, and that branch doesn't run in the suspended state,
+            // so here we restore the root container to opaque as a fallback.
             binding.root.alpha = 1f
         } catch (e: Throwable) {
             android.util.Log.w("FreeformView", "restore_surface_failed", e)
@@ -1237,7 +1237,7 @@ class FreeformView(
     }
 
     /**
-     * 尝试将小窗内容全屏
+     * Try to make the freeform window's content fullscreen
      */
     private fun moveTaskToDefaultDisplay() {
         isDestroy = true
@@ -1247,23 +1247,23 @@ class FreeformView(
     }
 
     /**
-     * 通知windowManager刷新缩放后的界面
+     * Notify windowManager to refresh the scaled UI
      */
     private fun notifyWindowScale() {
         binding.root.scaleX = 1f
         binding.root.scaleY = 1f
-        //这里是用户拖动缩放的唯一收尾点：他拉出来的就是「当前这个形态」的新设定尺寸，
-        //只改写横/竖其中的一份，另一份原样保留。
+        //This is the single wrap-up point for user drag-scaling: what they dragged out is the new set size for "this current form",
+        //rewriting only the landscape or portrait copy, leaving the other as-is.
         setUserHeightForCurrentForm(freeformHeight)
         scaleX = freeformHeight / maxFreeformScreenSize.toFloat()
         scaleY = freeformWidth / minFreeformScreenSize.toFloat()
         updateWindowSize(false)
     }
 
-    //按下时的坐标
+    //Coordinates at press time
     private var lastX = -1f
     private var lastY = -1f
-    //当前正在操作的界面id
+    //The UI element id currently being operated
     private var touchId = -1
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouch(v: View, event: MotionEvent): Boolean {
@@ -1272,7 +1272,7 @@ class FreeformView(
                 if (FreeformHelper.isShowingFirst(this)) {
                     handleDownEvent(v, event)
                 } else {
-                    //不是处于最上层要移动到最上层
+                    //Not on top, so move it to the top
                     moveToFirst()
                 }
             }
@@ -1292,7 +1292,7 @@ class FreeformView(
         lastX = event.rawX
         lastY = event.rawY
         when(v.id) {
-            //左/右圆点：按下只记录起点，缩放在 handleMoveEvent 里按逐帧增量处理
+            //Left/right dot: press only records the starting point; scaling is handled in handleMoveEvent per-frame incrementally
             R.id.leftView, R.id.rightView -> {
                 beforeScaleHeight = freeformHeight
             }
@@ -1303,7 +1303,7 @@ class FreeformView(
             R.id.leftScale, R.id.rightScale -> {
                 beforeScaleHeight = freeformHeight
             }
-            //顶栏：与底栏同一套分发逻辑
+            //Top bar: same dispatch logic as the bottom bar
             R.id.topBarMinimize -> {
                 if (touchId == R.id.topBarMinimize) topMinimizeGestureDetector.onTouchEvent(event)
             }
@@ -1318,7 +1318,7 @@ class FreeformView(
 
     private fun handleMoveEvent(v: View, event: MotionEvent) {
         when(v.id) {
-            //左圆点：逐帧增量缩放，与左边缘缩放同一通道、同一手感
+            //Left dot: per-frame incremental scaling, same channel and same feel as left-edge scaling
             R.id.leftView -> {
                 if (touchId == R.id.leftView) {
                     val dx = event.rawX - lastX
@@ -1328,7 +1328,7 @@ class FreeformView(
                     lastY = event.rawY
                 }
             }
-            //右圆点：逐帧增量缩放，与右边缘缩放同一通道、同一手感
+            //Right dot: per-frame incremental scaling, same channel and same feel as right-edge scaling
             R.id.rightView -> {
                 if (touchId == R.id.rightView) {
                     val dx = event.rawX - lastX
@@ -1344,9 +1344,9 @@ class FreeformView(
                     val dy = event.rawY - lastY
 
                     handleMove(dx, dy)
-                    // 已删除：贴屏幕四角时自动缩小挂起的逻辑。
-                    // 用户反馈不希望移到屏幕角落时窗口被自动缩小，
-                    // 移动就应该是纯粹的移动。
+                    // Removed: the logic that auto-shrank and suspended when hugging a screen corner.
+                    // Users didn't want the window auto-shrunk when moved to a screen corner;
+                    // moving should be purely moving.
                     lastX = event.rawX
                     lastY = event.rawY
 
@@ -1371,7 +1371,7 @@ class FreeformView(
                     lastY = event.rawY
                 }
             }
-            //顶栏：移动阶段只喂给各自的 GestureDetector，位置固定不参与拖动
+            //Top bar: the move phase only feeds each GestureDetector; the position is fixed and doesn't participate in dragging
             R.id.topBarMinimize -> {
                 if (touchId == R.id.topBarMinimize) topMinimizeGestureDetector.onTouchEvent(event)
             }
@@ -1389,18 +1389,18 @@ class FreeformView(
             R.id.middleView -> {
                 middleGestureDetector.onTouchEvent(event)
             }
-            //左圆点：抬手时刷新虚拟屏尺寸，与边缘缩放收尾一致
+            //Left dot: on release refresh the virtual-display size, same wrap-up as edge scaling
             R.id.leftView -> {
                 if (touchId == R.id.leftView) notifyWindowScale()
             }
-            //右圆点：抬手时刷新虚拟屏尺寸，与边缘缩放收尾一致
+            //Right dot: on release refresh the virtual-display size, same wrap-up as edge scaling
             R.id.rightView -> {
                 if (touchId == R.id.rightView) notifyWindowScale()
             }
             R.id.leftScale, R.id.rightScale -> {
                 notifyWindowScale()
             }
-            //顶栏：抬手决定单击/长按生效
+            //Top bar: on release decide whether single tap / long press takes effect
             R.id.topBarMinimize -> {
                 if (touchId == R.id.topBarMinimize) topMinimizeGestureDetector.onTouchEvent(event)
             }
@@ -1414,22 +1414,22 @@ class FreeformView(
         touchId = -1
     }
 
-    //指本次与缩放前的比例
+    //The ratio of this pass relative to before scaling
     private var mScale = 1f
     private var beforeScaleHeight = freeformHeight
 
     /**
-     * 缩放处理
-     * 优化 尝试更加流畅的缩放动画 q220904.8
+     * Scale handling
+     * Optimization: try a smoother scaling animation q220904.8
      */
     private fun handleScaleLeft(dx: Float, dy: Float) {
-        //缩小
+        //Shrink
         if (dx > 0 && dy < 0) {
             val tempHeight = freeformHeight + dy
             val tempWidth = freeformWidth - dx
-            //在尺寸内
+            //Within size bounds
             if (tempHeight > MIN_HEIGHT && tempHeight <= config.maxHeight && tempWidth > MIN_WIDTH && tempWidth < realScreenWidth) {
-                //优化 尝试更加跟手的缩放操作 q220904.6
+                //Optimization: try a more finger-following scale operation q220904.6
                 val maxMove = max(abs(dx), abs(dy)).roundToInt()
                 freeformHeight -= maxMove
                 freeformWidth = (freeformHeight * config.widthHeightRatio).roundToInt()
@@ -1444,11 +1444,11 @@ class FreeformView(
                 }
             }
         }
-        //放大
+        //Enlarge
         else if (dx < 0 && dy > 0) {
             val tempHeight = freeformHeight + dy
             val tempWidth = freeformWidth - dx
-            //在尺寸内
+            //Within size bounds
             if (tempHeight > MIN_HEIGHT && tempHeight <= config.maxHeight && tempWidth > MIN_WIDTH && tempWidth < realScreenWidth) {
                 val maxMove = max(abs(dx), abs(dy)).roundToInt()
                 freeformHeight += maxMove
@@ -1467,14 +1467,14 @@ class FreeformView(
     }
 
     /**
-     * 缩放处理
+     * Scale handling
      */
     private fun handleScaleRight(dx: Float, dy: Float) {
-        //缩小
+        //Shrink
         if (dx < 0 && dy < 0) {
             val tempHeight = freeformHeight + dy
             val tempWidth = freeformWidth + dx
-            //在尺寸内
+            //Within size bounds
             if (tempHeight > MIN_HEIGHT && tempHeight <= config.maxHeight && tempWidth > MIN_WIDTH && tempWidth < realScreenWidth) {
                 val maxMove = max(abs(dx), abs(dy)).roundToInt()
                 freeformHeight -= maxMove
@@ -1490,11 +1490,11 @@ class FreeformView(
                 }
             }
         }
-        //放大
+        //Enlarge
         else if (dx > 0 && dy > 0) {
             val tempHeight = freeformHeight + dy
             val tempWidth = freeformWidth + dx
-            //在尺寸内
+            //Within size bounds
             if (tempHeight > MIN_HEIGHT && tempHeight <= config.maxHeight && tempWidth > MIN_WIDTH && tempWidth < realScreenWidth) {
                 val maxMove = max(abs(dx), abs(dy)).roundToInt()
                 freeformHeight += maxMove
@@ -1513,7 +1513,7 @@ class FreeformView(
     }
 
     /**
-     * 移动位置处理
+     * Move-position handling
      */
     private fun handleMove(dx: Float, dy: Float) {
         windowManager.updateViewLayout(binding.root, windowLayoutParams.apply {
@@ -1554,23 +1554,23 @@ class FreeformView(
     }
 
     private fun destroy() {
-        // destroy 有多条入口（用户点关闭、任务被移除、任务跳到全屏、
-        // 再次进入同一应用时清旧实例），重复进入会把虚拟屏 release 两次。
+        // destroy has multiple entry points (user taps close, task removed, task jumps to fullscreen,
+        // re-entering the same app clearing the old instance), and re-entering would release the virtual display twice.
         //
-        // 注意这里不能用 isDestroy 做幂等：moveTaskToDefaultDisplay() 会先把它置位
-        // （让 Sui 钩子别把任务拉回小窗），那时 destroy() 还没执行；
-        // 用它做守卫的话全屏时 destroy() 整个被跳过，小窗留在屏幕上、
-        // 虚拟屏停在全屏尺寸，下次打开应用画面会比小窗小一圈。
+        // Note we can't use isDestroy for idempotence here: moveTaskToDefaultDisplay() sets it first
+        // (to stop the Sui hook from pulling the task back into the freeform window), before destroy() has run;
+        // guarding with it would skip destroy() entirely in fullscreen, leaving the freeform window on screen and
+        // the virtual display stuck at fullscreen size, so next time the app would render a size smaller than the window.
         if (isDestroyed) return
 
-        // 退出时一并收掉悬浮球，否则球会留在屏幕上变成孤儿。
+        // On exit also dismiss the floating ball, otherwise it stays on screen as an orphan.
         miniBall?.dismiss()
         miniBall = null
-        //记录位置
+        //Record position
         if (viewModel.getBooleanSp("remember_freeform_position", false)) {
             val sp = context.getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
-            //落库用用户设定的长边，不用 freeformHeight：小窗处于横屏（或刚被夹紧过）时
-            //freeformHeight 只是不溢出屏幕的临时值，存下来会让下次开屏莫名变小
+            //Persist the user-set long edge, not freeformHeight: when the freeform window is landscape (or just clamped),
+            //freeformHeight is only a temporary value to avoid overflow, and storing it would make the next launch mysteriously smaller
             val userHeight = userHeightForCurrentForm().let { if (it > 0) it else freeformHeight }
             if (screenRotation == Surface.ROTATION_90 || screenRotation == Surface.ROTATION_270) {
                 sp.edit()
@@ -1591,16 +1591,16 @@ class FreeformView(
         isDestroyed = true
         binding.root.removeCallbacks(surfaceWatchdog)
         binding.root.removeCallbacks(surfaceWatchdogConfirm)
-        // 只摘真正挂上去的窗口。没挂上去时 removeViewImmediate 必抛，
-        // 那条异常会被记成 zombie_window，是我们自己造的假警报。
+        // Only detach a genuinely attached window. When not attached removeViewImmediate always throws,
+        // and that exception gets logged as zombie_window, a false alarm we created ourselves.
         if (windowAttached) {
             windowAttached = false
             try {
                 windowManager.removeViewImmediate(binding.root)
             } catch (e: Exception) {
-                // 这一句失败窗口就永久留在 WindowManager 里（带 surface、看不见、占 30+MB），
-                // 而且后面 virtualDisplay 照样会被 release，变成「有窗口没画面」的僵尸。
-                // 实测这种僵尸窗口确实存在，所以这里必须出声。
+                // If this line fails the window stays permanently in the WindowManager (with a surface, invisible, holding 30+MB),
+                // and virtualDisplay still gets released afterward, becoming a zombie with "a window but no content".
+                // Measured that such a zombie window really exists, so we must log loudly here.
                 Log.e(TAG, "remove_view_failed - zombie window left pkg=${config.packageName}", e)
                 DiagnosticsLog.recordRes(
                     context, "zombie_window",
@@ -1628,9 +1628,9 @@ class FreeformView(
             Log.w(TAG, "unregister_screen_listener_failed pkg=${config.packageName}", e)
         }
 
-        //移除小窗管理
-        //任务跳到全屏被清掉时，小窗可能正挂在后台（收起到侧边栏/悬浮球），
-        //两个集合都要清，否则侧边栏会留下一个点不开的幽灵条目。
+        //Remove freeform-window management
+        //When a task jumps to fullscreen and gets cleared, the freeform window may be hanging in the background (collapsed to sidebar/floating ball),
+        //so both sets must be cleared, otherwise the sidebar keeps an untappable ghost entry.
         FreeformHelper.removeFreeformFromSet(this)
         FreeformHelper.removeMiniFreeformFromSet(this)
 
@@ -1645,8 +1645,8 @@ class FreeformView(
 
     init {
         if (MiFreeform.me?.getControlService()?.asBinder()?.pingBinder() == true) {
-            //尝试恢复小窗状态
-            //优化 如果小窗移动到屏幕外导致无法控制，可以尝试从侧边栏再次点击该应用以移动到屏幕中心 q220917.4
+            //Try to restore the freeform-window state
+            //Optimization: if the freeform window moved off-screen and can't be controlled, tap the app again in the sidebar to move it to the screen center q220917.4
             if (FreeformHelper.isAppInFreeform(config.packageName, config.userId)) {
                 val freeformView = FreeformHelper.getFreeformStackSet().getByPackageName(config.packageName, config.userId)
                 freeformView?.toScreenCenter()
@@ -1654,15 +1654,15 @@ class FreeformView(
             } else if (FreeformHelper.isAppInMiniFreeform(config.packageName, config.userId)) {
                 FreeformHelper.getMiniFreeformStackSet().getByPackageName(config.packageName, config.userId)?.fromBackstage()
             } else if (!Settings.canDrawOverlays(context) && !isAccessibilityServiceEnabled()) {
-                // 裁决前置到建虚拟屏之前（`_rz268` 的 rz_gate_first 臂实测通过后转正）：
-                // 两种窗口类型都没资格时，连虚拟屏都不必建起来再拆，直接告知缺权限。
+                // Move the decision ahead of building the virtual display (promoted after the `_rz268` rz_gate_first arm passed measurement): when
+                // neither window type is eligible, there's no need to build the virtual display just to tear it down—report the missing permission directly.
                 Log.w(TAG, "start_rejected no_overlay_permission gate_first pkg=${config.packageName}")
                 requestOverlayPermissionUi(destroyFirst = false)
             } else {
                 initSystemService()
                 initConfig()
 
-                //youtube单独适配
+                //YouTube-specific adaptation
                 if (config.packageName == YOUTUBE) {
                     config.activityName = YOUTUBE_ACTIVITY
                 }
@@ -1673,8 +1673,8 @@ class FreeformView(
             }
         }
         else {
-            // 实测：force-stop 后第一次开小窗就是走到这里——无窗口、无虚拟屏、无日志，
-            // 用户只看到「点了没反应」。Toast 一响就过，所以必须同时留下可回放的记录。
+            // Measured: the first freeform-window open after force-stop lands here—no window, no virtual display, no log,
+            // the user only sees "tapping does nothing". A Toast passes in a flash, so we must also leave a replayable record.
             Log.w(TAG, "start_rejected shizuku not bound pkg=${config.packageName}")
             DiagnosticsLog.recordRes(
                 context, "shizuku_unbound", R.string.service_not_running_pkg, config.packageName
@@ -1685,10 +1685,10 @@ class FreeformView(
     }
 
     /**
-     * 把触摸点从 textureView 的视图坐标换算到虚拟屏 buffer 坐标。
+     * Maps the touch point from textureView's view coordinates to the virtual display's buffer coordinates.
      *
-     * 以画面 View 的实测尺寸为准（理由见 [FreeformTouchMapper]）；实测尺寸还没拿到时
-     * （极端时序，例如首帧前就有触摸）退回旧的名义比例，保证不出现除零和整屏无响应。
+     * Based on the content View's measured size (see [FreeformTouchMapper] for why); when the measured size isn't available yet
+     * (extreme timing, e.g. a touch before the first frame), fall back to the old nominal ratio to guarantee no divide-by-zero and no dead screen.
      */
     private fun mapTouchToBuffer(dst: MotionEvent.PointerCoords) {
         val view = binding.textureView
@@ -1696,7 +1696,7 @@ class FreeformView(
         dst.y = FreeformTouchMapper.mapY(dst.y, view.height, freeformScreenHeight, scaleY)
     }
 
-    //优化 将触摸设置为一等公民，以支持多点触控，也可以看一下为什么那样，多点触控就不支持了... q220906.1
+    //Optimization: treat touch as a first-class citizen to support multi-touch; also worth looking into why, that way, multi-touch wasn't supported... q220906.1
     private inner class TouchListener : View.OnTouchListener{
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouch(v: View, event: MotionEvent): Boolean {
@@ -1717,7 +1717,7 @@ class FreeformView(
         }
 
         /**
-         * 触控处理
+         * Touch handling
          */
         private fun handleTouch(event: MotionEvent) {
             val pointerCoords: Array<MotionEvent.PointerCoords?> = arrayOfNulls(event.pointerCount)
@@ -1749,8 +1749,8 @@ class FreeformView(
                 event.flags
             )
 
-            //触控是高频路径，Shizuku binder 失效或虚拟屏已释放时 transact 会直接抛异常，
-            //一抛就崩掉整个进程（手指一碰就闪退），这里统一兜住并记日志。
+            //Touch is a high-frequency path: when the Shizuku binder dies or the virtual display is already released, transact throws directly,
+            //and a single throw crashes the whole process (a finger tap closes the app), so we catch it uniformly here and log it.
             runCatching {
                 setDisplayIdMethod?.invoke(newEvent, virtualDisplay.display.displayId)
                 inputManager?.injectInputEvent(newEvent, 0)
@@ -1780,7 +1780,7 @@ class FreeformView(
         }
 
         /**
-         * 触控处理
+         * Touch handling
          */
         private fun handleTouch(event: MotionEvent) {
             val pointerCoords: Array<MotionEvent.PointerCoords?> = arrayOfNulls(event.pointerCount)
@@ -1831,18 +1831,18 @@ class FreeformView(
         override fun onTaskDisplayChanged(tId: Int, newDisplayId: Int) {
             if (taskId == -1 && newDisplayId == virtualDisplay.display.displayId) taskId = tId
 
-            //不是自己的任务、或者任务还在自己的虚拟屏里，都不用处理
+            //Not our task, or the task is still inside our own virtual display—nothing to handle either way
             if (tId != taskId || newDisplayId == virtualDisplay.display.displayId || isDestroy) return
 
             if (newDisplayId != Display.DEFAULT_DISPLAY) return
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && config.useSuiRefuseToFullScreen) {
-                //用户开了「使用 Shizuku/Sui 阻止应用跳出小窗到全屏」，把任务拉回小窗
+                //The user enabled "use Shizuku/Sui to stop apps from leaving the freeform window into fullscreen", so pull the task back into the freeform window
                 activityTaskManager?.moveRootTaskToDisplay(tId, virtualDisplay.display.displayId)
             } else {
-                //任务跑到全屏去了（用户从桌面、通知等入口再次进入了这个应用）。
-                //此时旧小窗的虚拟屏已经没有内容，收起来再还原会变成一个
-                //点不动也画不出来的透明小窗，所以直接把旧小窗清掉。
+                //The task went to fullscreen (the user re-entered this app from the launcher, a notification, etc.).
+                //At this point the old freeform window's virtual display has no content; collapsing and restoring it would turn it into
+                //a transparent freeform window that can neither be tapped nor drawn, so we just clear the old window directly.
                 scope.launch(Dispatchers.Main) {
                     destroy()
                 }
@@ -1856,16 +1856,16 @@ class FreeformView(
                     taskId = taskInfo.taskId
                 }
             } catch (e: Exception) {
-                // userId 字段名一变（高版本可能改名或提升为公开属性），taskId 就永远停在旧值，
-                // 后果是应用自己转屏时小窗不复位。失败必须可见。
+                // If the userId field name ever changes (later versions may rename it or promote it to a public property), taskId stays stuck at the old value forever,
+                // and the consequence is that the window doesn't reset when the app rotates itself. The failure must be visible.
                 Log.w(TAG, "read_task_userId_failed pkg=${config.packageName}", e)
             }
         }
 
         override fun onTaskRequestedOrientationChanged(tId: Int, requestedOrientation: Int) {
-            //用户已手动旋转小窗方向时，忽略应用上报的方向，避免把窗口复位
+            //When the user has manually rotated the freeform window's orientation, ignore the app-reported orientation to avoid resetting the window
             if (manualRotationOverride) return
-            //q220902.2 某些竖屏软件也会横屏，经查，会有一个requestedOrientation为2的情况，将其转为1
+            //q220902.2 some portrait apps also go landscape; investigation found a case with requestedOrientation=2, so convert it to 1
             var tempRotation = requestedOrientation
             if (tempRotation != VIRTUAL_DISPLAY_ROTATION_PORTRAIT && tempRotation != VIRTUAL_DISPLAY_ROTATION_LANDSCAPE) tempRotation = VIRTUAL_DISPLAY_ROTATION_PORTRAIT
             if (taskId == tId && tempRotation != virtualDisplayRotation) {
@@ -1876,9 +1876,9 @@ class FreeformView(
             }
         }
 
-        //q220903.2 Android 10系统上需要该回调监听
+        //q220903.2 on Android 10 this callback is needed for listening
         override fun onActivityRequestedOrientationChanged(tId: Int, requestedOrientation: Int) {
-            //用户已手动旋转小窗方向时，忽略应用上报的方向，避免把窗口复位
+            //When the user has manually rotated the freeform window's orientation, ignore the app-reported orientation to avoid resetting the window
             if (manualRotationOverride) return
             var tempRotation = requestedOrientation
             if (tempRotation != VIRTUAL_DISPLAY_ROTATION_PORTRAIT && tempRotation != VIRTUAL_DISPLAY_ROTATION_LANDSCAPE) tempRotation = VIRTUAL_DISPLAY_ROTATION_PORTRAIT
@@ -1894,30 +1894,30 @@ class FreeformView(
     companion object {
         private const val TAG = "FreeformView"
 
-        // 开完窗后等多久判定「系统没给 surface」。MIX 2S 上正常路径远早于这个值，
-        // 留出余量是为了慢机器上不误报；宁可晚报四秒，也别漏掉占着虚拟屏的隐形窗口。
+        // How long after opening the window to decide "the system gave no surface". On MIX 2S the normal path completes far earlier than this;
+        // the margin is to avoid false alarms on slow devices. Better to report four seconds late than to miss an invisible window occupying the virtual display.
         private const val SURFACE_WATCHDOG_MS = 4000L
 
-        // 第一次探到隐藏之后，隔多久再确认。实测瞬时隐藏几秒就会自己恢复，
-        // 而真正要治的那种一直到进程重启都不恢复，所以这一头放宽到十秒不影响判定。
+        // After first detecting the hiding, how long to wait before confirming. Measured, a momentary hiding recovers on its own within seconds,
+        // while the kind we really must handle never recovers until the process restarts, so relaxing this to ten seconds doesn't affect the decision.
         private const val SURFACE_CONFIRM_MS = 10000L
 
-        // 只统计「我们自己的窗口块」里出现的强制隐藏标记，命中就 exit 0。
-        // dumpsys 里一个窗口以 "Window #N Window{... pkg}" 开头，后续行属于同一个块，
-        // 所以用 f 记住「现在是不是在读我们自己的块」。
+        // Only count the force-hide marker within "our own window block"; on a hit, exit 0.
+        // In dumpsys a window starts with "Window #N Window{... pkg}", and subsequent lines belong to the same block,
+        // so use f to remember "whether we're currently reading our own block".
         private const val HIDDEN_WINDOW_CHECK_COMMAND =
             "dumpsys window windows | awk '/Window #/{f=(\$0 ~ /mifreeform\\.freeform}/)} " +
                     "f&&/mForceHideNonSystemOverlayWindow=true/{n++} END{exit(n>0?0:1)}'"
 
-        // 上一个命令只给布尔，这条给文本：把「带防劫持 flag 的那个窗口」的包名抓出来。
-        // dumpsys 里一个窗口以 "Window #N Window{token u0 包名/Activity}" 开头，
-        // flag 行在同一条记录里稍后才出现，所以用 h 记住当前块的头行再从中截包名。
+        // The previous command only gives a boolean; this one gives text: extract the package name of "the window carrying the anti-hijack flag".
+        // In dumpsys a window starts with "Window #N Window{token u0 pkg/Activity}",
+        // and the flag line appears a bit later within the same record, so use h to remember the current block's header line and then cut the package name from it.
         private const val HIDDEN_WINDOW_CULPRIT_COMMAND =
             "dumpsys window windows | awk '/Window #/{h=\$0} /HIDE_NON_SYSTEM_OVERLAY_WINDOWS/" +
                     "{if (match(h, /u0 [a-zA-Z0-9._]+\\//)) {print substr(h, RSTART+3, RLENGTH-4)}}' | sort -u"
 
-        // 等比例缩放的最小尺寸：允许缩到很小。
-        // 原值 400/600 在小屏手机上几乎等于「不能缩小」，这里降到真实的最小可用尺寸。
+        // Minimum size for proportional scaling: allow scaling down quite small.
+        // The original 400/600 was effectively "can't shrink" on small-screen phones, so lower it to the real minimum usable size.
         private const val MIN_WIDTH = 200
         private const val MIN_HEIGHT = 300
 
@@ -1935,7 +1935,7 @@ class FreeformView(
         private const val VIRTUAL_DISPLAY_ROTATION_PORTRAIT = 1
         private const val VIRTUAL_DISPLAY_ROTATION_LANDSCAPE = 0
 
-        // 收起方式设置项
+        // Collapse-mode setting key
         const val KEY_MINIMIZE_MODE = "minimize_mode"
         const val MINIMIZE_MODE_SIDEBAR = 0
         const val MINIMIZE_MODE_BALL = 1

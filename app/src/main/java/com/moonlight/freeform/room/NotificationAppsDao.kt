@@ -24,11 +24,11 @@ interface NotificationAppsDao {
     @Query("SELECT * FROM NotificationAppsEntity")
     fun getAllByFlow() : Flow<List<NotificationAppsEntity>?>
 
-    // 备份用：直接取快照，不订阅 LiveData。
+    // Backup: take a snapshot directly, without subscribing to LiveData.
     @Query("SELECT * FROM NotificationAppsEntity")
     fun getAllEntitiesSync(): List<NotificationAppsEntity>
 
-    // 恢复用：恢复时先 deleteAll 再逐条插回来。
+    // Restore: deleteAll first, then re-insert row by row.
     @Query("INSERT OR REPLACE INTO NotificationAppsEntity(packageName, userId) VALUES(:packageName, :userId)")
     fun insertWithUserId(packageName: String, userId: Int)
 

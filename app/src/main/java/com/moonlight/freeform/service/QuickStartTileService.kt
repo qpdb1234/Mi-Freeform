@@ -21,12 +21,12 @@ import java.lang.reflect.Method
 /**
  * @author sunshine
  * @date 2021/2/27
- * 通知栏快捷磁贴服务
+ * Notification-shade quick-settings tile service
  */
 @DelicateCoroutinesApi
 class QuickStartTileService : TileService() {
 
-    //应用内语言切换：磁贴标题由系统按 manifest 标签绘制，这里只影响本服务自己的文案
+    //In-app language switch: the tile title is drawn by the system from the manifest label, so this only affects this service's own text
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.moonlight.freeform.utils.LocaleHelper.wrap(newBase))
     }

@@ -65,7 +65,7 @@ class ChooseAppsViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    //添加列表中所有软件
+    //Add every app in the list
     fun insertAllApps(allAppsList: ArrayList<LauncherActivityInfo>, userManager: UserManager) {
         deleteAll()
         allAppsList.forEach {

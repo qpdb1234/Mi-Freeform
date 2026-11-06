@@ -9,7 +9,7 @@ import com.moonlight.freeform.databinding.ActivityFreeformGuideBinding
 
 class GuideActivity : AppCompatActivity() {
 
-    //应用内语言切换：按设置包裹基础 Context（见 LocaleHelper）
+    //In-app language switch: wrap the base Context per the saved setting (see LocaleHelper)
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.moonlight.freeform.utils.LocaleHelper.wrap(newBase))
     }

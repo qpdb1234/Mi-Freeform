@@ -20,7 +20,7 @@ class DatabaseRepository(context: Context) {
         try {
             freeFormAppsDao.insert(packageName, userId)
         }catch (e: Exception) {
-            // 插入失败意味着用户在侧边栏里选完应用后条目莫名消失，不能不响。
+            // An insert failure means the entry silently disappears after the user picks an app in the sidebar; we must not stay silent.
             Log.w(TAG, "insert_freeform_failed pkg=$packageName user=$userId", e)
         }
     }
@@ -53,7 +53,7 @@ class DatabaseRepository(context: Context) {
         return freeFormAppsDao.getAllWithoutLiveData()
     }
 
-    // 备份/恢复用，见 DAO 里同名方法的注释。
+    // Used by backup/restore; see the comment on the same-named DAO method.
     fun getAllFreeFormEntitiesSync(): List<FreeFormAppsEntity> {
         return freeFormAppsDao.getAllEntitiesSync()
     }

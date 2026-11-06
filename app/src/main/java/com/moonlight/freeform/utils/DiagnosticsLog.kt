@@ -7,39 +7,39 @@ import android.util.Log
 import androidx.annotation.StringRes
 
 /**
- * 可回放的失败记录。
+ * A replayable record of failures.
  *
- * 米窗大量功能依赖 Shizuku binder 与系统隐藏 API，这些环节失败时过去只有两种表现：
- * 要么弹一个转瞬即逝的 Toast（用户没看见就等于没发生），要么被 catch 吞掉（连 Toast 都没有）。
- * 本记录器把失败写进独立的 SharedPreferences，进程被杀、重启之后仍然读得到，
- * 于是「点了没反应」这件事第一次有了可以事后查看的证据。
+ * Many MiFreeform features depend on the Shizuku binder and system hidden APIs; when these steps failed, previously there were only two outcomes:
+ * either a fleeting Toast (if the user didn't see it, it's as if it never happened), or swallowed by a catch (not even a Toast).
+ * This logger writes failures into a dedicated SharedPreferences, still readable after the process is killed and restarted,
+ * so the "tapped but nothing happened" issue now has after-the-fact evidence for the first time.
  *
- * 写入点应当满足：这次失败是用户能感知的（开不了小窗、看不见悬浮窗、设置没生效），
- * 而不是内部无害的兼容性试探。
+ * Write sites should satisfy: the failure is user-perceivable (freeform won't open, floating window isn't visible, a setting didn't take effect),
+ * not an internally harmless compatibility probe.
  */
 object DiagnosticsLog {
 
     private const val TAG = "DiagnosticsLog"
     private const val SP_NAME = "mifreeform_diagnostics"
     private const val KEY_RECORDS = "records"
-    // 记录之间用换行分隔；消息内的换行在编码时就换成空格，所以分割始终是安全的。
+    // Records are separated by newlines; newlines inside a message are replaced with spaces at encode time, so splitting is always safe.
     private const val FIELD_SEPARATOR = '\u001E'
     private const val MAX_RECORDS = 20
 
     /**
-     * 同一 (tag, message) 在这个时间窗口内只落一条。
+     * The same (tag, message) is persisted only once within this time window.
      *
-     * 必须有这条：等 binder 的轮询与隐藏窗看门狗都是定时重复的，同一个失败会被成十倍地
-     * 重放（实测一次 8 秒的等待写出 41 条）。而每条记录都会重写整个 SharedPreferences、
-     * 并刷新一次常驻通知，所以洪水不只是难看：它会让通知在用户眼前反复闪。
+     * This rule is mandatory: the binder-wait polling and the hidden-window watchdog are both periodic repeats, so one failure
+     * gets replayed tenfold (measured: a single 8-second wait wrote 41 records). And each record rewrites the whole SharedPreferences
+     * and refreshes the ongoing notification once, so the flood isn't just unsightly—it makes the notification flicker repeatedly in front of the user.
      */
     private const val DEDUPE_WINDOW_MS = 5_000L
 
-    // 只用于限流的内存表，不跨进程；上限防泄漏。
+    // In-memory table used only for throttling; not cross-process; the cap prevents leaks.
     private const val DEDUPE_TABLE_LIMIT = 64
     private val lastWriteUptime = HashMap<String, Long>()
 
-    /** 一条记录：时间戳、来源标签、面向用户的简短描述。 */
+    /** One record: timestamp, source tag, and a short user-facing description. */
     data class Entry(val timeMillis: Long, val tag: String, val message: String)
 
     fun interface Listener {
@@ -49,12 +49,12 @@ object DiagnosticsLog {
     private val listeners = mutableListOf<Listener>()
 
     /**
-     * 记下一条失败。可在任意线程调用：落盘走 apply()，不阻塞调用方。
+     * Records a failure. Can be called from any thread: persistence uses apply(), not blocking the caller.
      *
-     * 同时输出到 logcat，保证即使用户不去看记录，抓日志的人也能拿到同一份证据。
+     * Also outputs to logcat, ensuring that even if the user doesn't look at the records, whoever captures logs gets the same evidence.
      *
-     * ⚠ 正文是常驻通知给用户看的那一行（F3），所以**不要在这里直接拼中文字面量**——
-     * 那样英文用户拿到的通知会标题英文、正文中文。请用下面的 [recordRes]。
+     * ⚠ The message is the line shown to the user in the ongoing notification (F3), so **do not concatenate Chinese literals here**—
+     * that would give English users a notification with an English title but a Chinese body. Use [recordRes] below instead.
      */
     fun record(context: Context, tag: String, message: String) {
         if (!shouldWrite(tag, message)) {
@@ -75,18 +75,18 @@ object DiagnosticsLog {
                 .putString(KEY_RECORDS, trimmed.joinToString("\n") { encode(it) })
                 .apply()
         } catch (e: Exception) {
-            // 记录器本身坏掉不能把调用方带崩，logcat 那行已经出去了。
+            // A broken logger must not crash the caller; the logcat line has already been emitted.
             Log.w(TAG, "persist_failed", e)
         }
         notifyListeners(entry)
     }
 
     /**
-     * 面向用户的记录走资源 ID，而不是代码里写死的中文。
+     * User-facing records go through resource IDs rather than hardcoded Chinese in code.
      *
-     * 记录正文会被常驻通知直接显示（F3），它属于用户能看见的界面文案，
-     * 就得和 Toast 一样跟着 locale 走。拿不到资源（极端情况下 context 不对）时退回资源名，
-     * 不能因为本地化失败就连记录都不落——记录比措辞重要。
+     * The record body is shown directly by the ongoing notification (F3); it is UI text the user can see,
+     * so it must follow the locale just like a Toast. When the resource can't be resolved (in edge cases the context is wrong), fall back to the resource name;
+     * a localization failure must not cause us to skip persisting the record—the record matters more than the wording.
      */
     fun recordRes(context: Context, tag: String, @StringRes resId: Int, vararg args: Any) {
         val message = try {
@@ -98,10 +98,10 @@ object DiagnosticsLog {
         record(context, tag, message)
     }
 
-    /** 最近一条记录，没有则 null。 */
+    /** The most recent record, or null if none. */
     fun latest(context: Context): Entry? = read(context).lastOrNull()
 
-    /** 全部记录，按时间从早到晚。 */
+    /** All records, ordered from earliest to latest. */
     fun all(context: Context): List<Entry> = read(context)
 
     fun clear(context: Context) {
@@ -134,9 +134,9 @@ object DiagnosticsLog {
     }
 
     /**
-     * 限流判定：距上一条同内容记录不足 [DEDUPE_WINDOW_MS] 则丢弃。
+     * Throttling decision: drops a record if it's within [DEDUPE_WINDOW_MS] of the previous identical one.
      *
-     * 丢弃时仍给一行 verbose，便于排查「为什么这条记录没出现」。
+     * On drop, still emit one verbose line, to help investigate "why this record didn't appear".
      */
     private fun shouldWrite(tag: String, message: String): Boolean {
         val key = "$tag$FIELD_SEPARATOR$message"
@@ -174,7 +174,7 @@ object DiagnosticsLog {
         }
     }
 
-    // 一条记录形如  time\u001Etag\u001Emessage；消息里若又出现分隔符，解析时按剩余部分合并回来。
+    // A record is shaped like time\u001Etag\u001Emessage; if the separator appears again in the message, it is merged back as the remainder when parsing.
     private fun encode(entry: Entry): String =
         "${entry.timeMillis}$FIELD_SEPARATOR${entry.tag}$FIELD_SEPARATOR${entry.message.replace('\n', ' ').replace(FIELD_SEPARATOR, ' ')}"
 

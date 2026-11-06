@@ -3,7 +3,7 @@ package com.moonlight.freeform.ui.floating
 /**
  * @author sunshine
  * @date 2022/09/17
- * 服务中悬浮窗帮助类，尽可能保证其单例且稳定
+ * Helper for the in-service floating window, kept as a stable singleton as far as possible
  */
 object FloatingServiceHelper {
 }

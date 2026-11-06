@@ -11,7 +11,7 @@ import java.io.InputStreamReader;
  * @author Trinea
  * @date 2013-5-16
  * http://www.trinea.cn
- * 米窗声明：该类作者并非米窗，作者信息和源代码地址见上
+ * MiFreeform notice: the author of this class is not MiFreeform; see the author info and source URL above
  */
 public class HookShellUtils {
 
@@ -26,11 +26,11 @@ public class HookShellUtils {
     }
 
     /**
-     * 执行shell命令，默认返回结果
+     * Execute a shell command, returning the result by default
      *
      * @param command
      *            command
-     *  运行是否需要root权限
+     *  whether the run requires root permission
      * @return
      * @see HookShellUtils#execCommand(String[], boolean, boolean)
      */
@@ -43,8 +43,8 @@ public class HookShellUtils {
      *
      * @param commands
      *            command array
-     *  运行是否需要root权限
-     *  是否需要返回运行结果
+     *  whether the run requires root permission
+     *  whether the run result should be returned
      * @return <ul>
      *         <li>if isNeedResultMsg is false, {@link CommandResult#successMsg}
      *         is null and {@link CommandResult#errorMsg} is null.</li>
@@ -134,7 +134,7 @@ public class HookShellUtils {
     }
 
     /**
-     * 运行结果
+     * Execution result
      * <ul>
      * <li>{@link CommandResult#result} means result of command, 0 means normal,
      * else means error, same to excute in linux shell</li>
@@ -147,11 +147,11 @@ public class HookShellUtils {
      *         2013-5-16
      */
     public static class CommandResult {
-        /** 运行结果 **/
+        /** Execution result **/
         public int result;
-        /** 运行成功结果 **/
+        /** Success output **/
         public String successMsg;
-        /** 运行失败结果 **/
+        /** Error output **/
         public String errorMsg;
 
         public CommandResult(int result, String successMsg, String errorMsg) {

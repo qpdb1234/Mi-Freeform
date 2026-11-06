@@ -22,7 +22,7 @@ class ControlService : IControlService.Stub() {
     private var inputManager: InputManager? = null
 
     /**
-     * 初始化服务
+     * Initialize the service
      */
     @SuppressLint("PrivateApi")
     override fun init(): Boolean {
@@ -37,23 +37,24 @@ class ControlService : IControlService.Stub() {
     }
 
     /**
-     * 取命令的文本输出（只用 stdout）。
+     * Return the command's text output (stdout only).
      *
-     * 和 execShell 一样跑在 Shizuku 那个 shell uid 进程里；给「窗口是被谁要求隐藏的」这类
-     * 需要读内容而不是读退出码的探针用。失败或没输出时回空串，调用方按空串走兜底文案。
+     * Runs in the same Shizuku shell-uid process as execShell; meant for probes like "who asked the window to hide"
+     * that need to read the content rather than the exit code. On failure or empty output it returns an empty string,
+     * and the caller falls back to default text on an empty string.
      */
     override fun execShellText(command: String, useRoot: Boolean): String {
         return try {
             ShellUtils.execCommand(command, useRoot).successMsg ?: ""
         } catch (e: Exception) {
-            // 这条通道整条都是诊断用的，它自己再查不到就更得留痕。
+            // This whole channel is for diagnostics, so if it too can't find anything we must leave a trace even more.
             Log.w(TAG, "exec_shell_text_failed", e)
             ""
         }
     }
 
     /**
-     * 触摸事件
+     * Touch event
      */
     override fun touch(motionEventBean: MotionEventBean) {
         val count = motionEventBean.xArray.size
@@ -97,7 +98,7 @@ class ControlService : IControlService.Stub() {
     }
 
     /**
-     * 移动到全屏
+     * Move to fullscreen
      */
     override fun moveStack(displayId: Int): Boolean {
         return try {
@@ -113,8 +114,8 @@ class ControlService : IControlService.Stub() {
 
             result == 0
         } catch (e: Exception) {
-            // am stack / am display move-stack 在 Android 12+ 已被移除，这里失败是预期的，
-            // 但必须留痕，否则上层只看到「移动到全屏没反应」，无从归因。
+            // am stack / am display move-stack were removed on Android 12+, so failing here is expected,
+            // but we must leave a trace, otherwise the upper layer only sees "moving to fullscreen did nothing" with no way to attribute it.
             Log.w(TAG, "move_stack_failed display=$displayId", e)
             false
         }
@@ -122,7 +123,7 @@ class ControlService : IControlService.Stub() {
     }
 
     /**
-     * 点击返回
+     * Press back
      */
     override fun pressBack(displayId: Int) {
         val down = KeyEvent(
@@ -149,7 +150,7 @@ class ControlService : IControlService.Stub() {
                 .invoke(up, InputDevice.SOURCE_KEYBOARD)
             inputManager!!.injectInputEvent(up, displayId)
         } catch (e: Exception) {
-            // 本服务跑在 Shizuku 的独立进程里，不记日志就永远查不到返回键失效的原因。
+            // This service runs in Shizuku's separate process; without logging we could never find why the back key stops working.
             Log.w(TAG, "press_back_failed display=$displayId", e)
         }
     }

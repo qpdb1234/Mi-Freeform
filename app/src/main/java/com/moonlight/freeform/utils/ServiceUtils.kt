@@ -5,15 +5,15 @@ import android.content.Context
 
 /**
  * @date 2021/2/1
- * 服务相关工具类
+ * Service-related utility class
  */
 object ServiceUtils {
     /**
-     * 判断某个服务是否正在运行的方法
+     * Whether a given service is currently running.
      *
      * @param mContext
-     * @param serviceName 是包名+服务的类名（例如：net.loonggg.testbackstage.TestService）
-     * @return true代表正在运行，false代表服务没有正在运行
+     * @param serviceName package name + service class name (e.g. net.loonggg.testbackstage.TestService)
+     * @return true if it is running, false otherwise
      */
     fun isServiceWork(mContext: Context, serviceName: String): Boolean {
         var isWork = false

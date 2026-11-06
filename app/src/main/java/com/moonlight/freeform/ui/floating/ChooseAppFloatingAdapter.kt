@@ -29,12 +29,13 @@ import java.lang.reflect.Method
 /**
  * @author sunshine
  * @date 2021/3/7
- * 选择应用侧边栏适配器
+ * Sidebar adapter for app selection
  *
- * resolveInfoList / userHandleMap / itemDataMap 都由调用方（ChooseAppFloatingView）在后台线程取好后传进来：
- * 这几样分别是 PackageManager 全量 queryIntentActivities、一次 binder 调用，以及每一行的
- * 应用信息 + 图标解码 + 应用名。以前前两个放在构造器与 onCreateViewHolder 里，最后一个
- * 放在 onBindViewHolder 里，全都压在「点开面板到面板画出来」之间（实测首帧 measure+layout 481ms）。
+ * resolveInfoList / userHandleMap / itemDataMap are all prepared on a background thread by the caller
+ * (ChooseAppFloatingView) and passed in: these are respectively the full PackageManager queryIntentActivities,
+ * a binder call, and per-row app info + icon decode + app name. Previously the first two ran in the constructor
+ * and onCreateViewHolder, and the last in onBindViewHolder, all squeezed between "opening the panel and drawing it"
+ * (measured first-frame measure+layout was 481ms).
  */
 class ChooseAppFloatingAdapter(
     private val context: Context,
@@ -58,8 +59,8 @@ class ChooseAppFloatingAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        // 每个 ViewHolder 都去 userManager.userProfiles 走一次 binder，滚动时会掉帧；
-        // userHandleMap 已经在构造参数里了，这里不需要再做任何事。
+        // Having every ViewHolder call userManager.userProfiles once via binder causes frame drops while scrolling;
+        // userHandleMap is already a constructor parameter, so nothing needs to be done here.
         return ViewHolder(
             LayoutInflater.from(parent.context).inflate(
                 R.layout.item_floating,
@@ -70,13 +71,13 @@ class ChooseAppFloatingAdapter(
     }
 
     override fun getItemCount(): Int {
-        //2021.07.25更新，新增展示最小化的应用
+        // Updated 2021.07.25: added display of minimized apps
         return apps?.size?.plus(2)!! + miniFreeformSize
     }
 
     @SuppressLint("SetTextI18n")
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        //2021.07.15优化了选择应用界面的样式，增加了应用名称显示，所有应用移动到了最上面，新增编辑应用
+        // Optimized 2021.07.15: improved the app-picker UI style, added app name display, moved all apps to the top, added edit apps
         when (position) {
             0 -> {
                 holder.icon.setImageResource(R.drawable.ic_all)
@@ -127,7 +128,7 @@ class ChooseAppFloatingAdapter(
                     holder.icon.setImageDrawable(cached.icon)
                     holder.appName.text = cached.label
                 } else {
-                    // 没预热到（例如刚装好应用就点开面板），退回原来的现查现用
+                    // Not prewarmed (e.g. the panel was opened right after installing an app); fall back to the original on-demand lookup
                     try {
                         val appInfo = applicationInfo(packageName, entity.userId)
                         loadIconWithGlide(holder, appInfo)
@@ -135,7 +136,7 @@ class ChooseAppFloatingAdapter(
                     } catch (e: PackageManager.NameNotFoundException) {}
                 }
                 holder.click.setOnClickListener {
-                    // 同一应用已有小窗时先清掉旧实例，避免出现两个小窗或孤儿悬浮球
+                    // When the app already has a freeform, destroy the old instance first to avoid two windows or an orphan floating ball
                     FreeformHelper.destroyExistingFreeform(packageName, entity.userId)
 
                     FreeformView(
@@ -148,7 +149,7 @@ class ChooseAppFloatingAdapter(
                     )
                     callback.onClick()
                 }
-                //长按进入排序界面
+                // Long-press to enter the sorting screen
                 holder.click.setOnLongClickListener {
                     context.startActivity(Intent(context, FloatingAppsSortActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
                     callback.onClick()
@@ -159,7 +160,7 @@ class ChooseAppFloatingAdapter(
 
     }
 
-    /** 缓存没命中时才走：向 LauncherApps 要一次应用信息（binder 调用）。 */
+    /** Only runs on cache miss: request app info from LauncherApps once (a binder call). */
     @Throws(PackageManager.NameNotFoundException::class)
     private fun applicationInfo(packageName: String, userId: Int): ApplicationInfo {
         val userHandle = userHandleMap[userId] ?: userHandleMap[0]!!
@@ -173,7 +174,7 @@ class ChooseAppFloatingAdapter(
             .into(holder.icon)
     }
 
-    /** 与原来一致：同一个包有多个可启动 Activity 时取最后一个。 */
+    /** Same as before: when a package has multiple launchable Activities, take the last one. */
     private fun findLaunchActivity(packageName: String): String {
         var activityName = ""
         resolveInfoList.forEach {
@@ -209,8 +210,9 @@ class ChooseAppFloatingAdapter(
 }
 
 /**
- * 面板一行要显示的内容：图标、应用名、启动用的 Activity。
- * 这三样都能先在后台线程算好（binder + 图标解码），绑定时只查表，首帧不再卡主线程。
+ * What one row of the panel displays: icon, app name, and the launch Activity.
+ * All three can be computed ahead of time on a background thread (binder + icon decode), so binding only does a
+ * table lookup and the first frame no longer blocks the main thread.
  */
 class FloatingItemData(
     val icon: Drawable?,
@@ -218,5 +220,5 @@ class FloatingItemData(
     val activityName: String
 )
 
-/** 缓存键：同一包名在不同用户（分身）下是面板里的两行。 */
+/** Cache key: the same package under different users (clones) occupies two rows in the panel. */
 fun floatingItemKey(packageName: String, userId: Int): String = "$packageName#$userId"

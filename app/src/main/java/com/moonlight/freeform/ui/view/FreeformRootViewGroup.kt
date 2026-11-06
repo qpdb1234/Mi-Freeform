@@ -13,7 +13,7 @@ class FreeformRootViewGroup @JvmOverloads constructor(
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-            Log.e("根目录", "返回")
+            Log.e("FreeformRootViewGroup", "back key")
         }
         return super.dispatchKeyEvent(event)
     }

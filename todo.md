@@ -1,1 +1,1 @@
-# 制作流体手势，通过无障碍，这样就可以监听返回了
+# Build fluid gestures via AccessibilityService, so that the back key can be listened to

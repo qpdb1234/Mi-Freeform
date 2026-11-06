@@ -14,23 +14,23 @@ import com.moonlight.freeform.R
 import java.io.OutputStream
 
 /**
- * 小窗截屏：把 TextureView 当前帧保存到系统截图目录。
+ * Freeform screenshot: save the TextureView's current frame to the system screenshots directory.
  *
- * 之所以用 TextureView.getBitmap() 而不是 MediaProjection：
- * MediaProjection 需要每次弹系统授权框，体验上无法接受；
- * 而 TextureView 本身持有小窗虚拟屏的 Surface 内容，
- * getBitmap() 直接拿到当前帧，不需要任何额外权限。
+ * Why TextureView.getBitmap() instead of MediaProjection:
+ * MediaProjection pops a system authorization dialog every time, which is unacceptable UX;
+ * while the TextureView itself holds the Surface content of the freeform's virtual display, so
+ * getBitmap() grabs the current frame directly with no extra permission at all.
  *
- * 保存路径走 MediaStore.Images，Android 10+ 用 RELATIVE_PATH
- * 写入 Pictures/Screenshots，Android 9 及以下直接写公共目录文件。
+ * The save path goes through MediaStore.Images: on Android 10+ use RELATIVE_PATH to write into
+ * Pictures/Screenshots, and on Android 9 and below write the file straight into the public directory.
  */
 internal object ScreenshotHelper {
 
     private const val TAG = "ScreenshotHelper"
 
     /**
-     * @param textureView 小窗的画面控件
-     * @param packageName 小窗内运行的包名，仅用于给文件命名
+     * @param textureView the freeform's content view
+     * @param packageName the package running inside the freeform, used only to name the file
      */
     fun capture(context: Context, textureView: TextureView, packageName: String) {
         try {
@@ -73,7 +73,7 @@ internal object ScreenshotHelper {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             true
         } catch (e: Throwable) {
-            // 插入了记录但写入失败时删掉空记录，避免图库里出现 0 字节的图。
+            // If a row was inserted but the write failed, delete the empty row so the gallery never shows a 0-byte image.
             uri?.let { runCatching { resolver.delete(it, null, null) } }
             false
         } finally {

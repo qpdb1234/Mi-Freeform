@@ -1,32 +1,32 @@
 package com.moonlight.freeform.ui.freeform
 
 data class FreeformConfig(
-    //是否使用自定义配置而非在FreeformView中配置
+    //Whether to use a custom config instead of configuring inside FreeformView
     var useCustomConfig: Boolean = false,
-    //运行程序包名
+    //Package name of the running app
     var packageName: String,
-    //运行程序活动名
+    //Activity name of the running app
     var activityName: String,
-    //启动的userId
+    //userId to launch under
     var userId: Int,
-    //叠加层最大高度
+    //Maximum overlay layer height
     var maxHeight: Int = 1,
-    //分辨率
+    //DPI
     var freeformDpi: Int = 1,
-    //宽高比，默认9：16
+    //Width-to-height ratio, default 9:16
     var widthHeightRatio: Float = 10f / 16f,
-    //使用shizuku/sui阻止小窗跳出到全屏
+    //Use Shizuku/Sui to stop the freeform from escaping to fullscreen
     var useSuiRefuseToFullScreen: Boolean = false,
-    //屏幕旋转时变化缩放比例
+    //Change the scale ratio on screen rotation
     var changeDpi: Boolean = false,
-    //兼容模式启动
+    //Launch in compatibility mode
     @Deprecated("", ReplaceWith(""))
     var compatibleMode: Boolean = false,
     var rememberPosition: Boolean = false,
-    //记录启动位置
+    //Remember the launch position
     var rememberX: Int = 0,
     var rememberY: Int = 0,
-    //双击底栏中部按钮执行的动作（默认旋转小窗）
+    //Action performed on double-tapping the center of the bottom bar (default: rotate the freeform)
     var bottomDoubleTapAction: TopBarAction = TopBarAction.ROTATE
 ) {
 

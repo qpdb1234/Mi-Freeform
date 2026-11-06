@@ -89,7 +89,7 @@ class HookFramework : IXposedHookLoadPackage, IXposedHookZygoteInit {
     }
 
     /**
-     * 12 别找了，logcat突然没有这个报错了，可能要换hook点了，明明前几天还有
+     * 12 Stop looking, this error suddenly vanished from logcat; the hook point may need to move, even though it was there just days ago
      */
     private fun hookATS(classLoader: ClassLoader) {
         //val classLoader = Thread.currentThread().contextClassLoader
@@ -142,7 +142,7 @@ class HookFramework : IXposedHookLoadPackage, IXposedHookZygoteInit {
     }
 
     /**
-     * 冻结虚拟屏幕方向
+     * Freeze the virtual display's rotation
      */
     private fun hookDisplayRotation() {
         val classLoader = Thread.currentThread().contextClassLoader
@@ -162,7 +162,7 @@ class HookFramework : IXposedHookLoadPackage, IXposedHookZygoteInit {
     }
 
     /**
-     * 暂时无用
+     * Currently unused
      */
     private fun hookATSHandleNonResizableTaskIfNeeded() {
         val classLoader = Thread.currentThread().contextClassLoader
@@ -201,7 +201,7 @@ class HookFramework : IXposedHookLoadPackage, IXposedHookZygoteInit {
             "injectInputEvent",
             object : XC_MethodReplacement() {
                 override fun replaceHookedMethod(p0: MethodHookParam): Any {
-                    //以mode代替display
+                    //Use mode in place of display
                     return XposedHelpers.callMethod(
                         p0.thisObject,
                         "injectInputEventInternal",

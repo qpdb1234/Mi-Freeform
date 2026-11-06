@@ -16,16 +16,16 @@ import com.moonlight.freeform.ui.freeform.FreeformView
 import com.moonlight.freeform.utils.DiagnosticsLog
 
 /**
- * 开小窗请求的接入口。
+ * Entry point for freeform-start requests.
  *
- * 发送方有两个：HookLauncher（最近任务菜单）与外部广播（adb / 第三方调用）。
- * 以前本类只在 ForegroundService / KeepAliveService 的 onCreate 里运行时注册，
- * manifest 声明是被注释掉的 —— 于是进程被停或被系统半拉起时**根本没有接收器**，
- * 广播在投递阶段就被丢弃（result=0、零窗口、零日志），表现为「点了没反应」。
- * 现在 manifest 静态声明与本运行时注册并存，所以：
- * 1. 同一条广播会被投两次，必须去重（见 companion 里的 lastHandledKey）；
- * 2. 静态声明会把进程从零拉起来，此时 ControlService 的 binder 还没到位，
- *    必须等 binder 再建窗（见 [awaitControlService]），否则又走进「Shizuku 未绑定」那条静默分支。
+ * There are two senders: HookLauncher (recent-tasks menu) and external broadcasts (adb / third-party calls).
+ * Previously this class was only registered at runtime in the onCreate of ForegroundService / KeepAliveService,
+ * and the manifest declaration was commented out—so when the process was stopped or half-resurrected by the system
+ * there was **no receiver at all**, and the broadcast was dropped at the delivery stage (result=0, zero windows, zero logs),
+ * appearing as "tapping does nothing". Now the static manifest declaration and the runtime registration coexist, so:
+ * 1. The same broadcast is delivered twice and must be deduplicated (see lastHandledKey in the companion);
+ * 2. The static declaration may cold-start the process from scratch, at which point ControlService's binder is not ready,
+ *    so we must wait for the binder before creating the window (see [awaitControlService]), otherwise it falls into the silent "Shizuku not bound" branch again.
  */
 class StartFreeformReceiver : BroadcastReceiver() {
 
@@ -43,7 +43,7 @@ class StartFreeformReceiver : BroadcastReceiver() {
             return
         }
 
-        // 静态 + 运行时双注册：两次投递的处理必须合成一次，否则会建两个虚拟屏。
+        // Static + runtime double registration: the two deliveries must be merged into one handling, otherwise two virtual displays would be created.
         val key = "$packageName/$activityName/$userId"
         synchronized(COMPONENT_LOCK) {
             val now = SystemClock.uptimeMillis()
@@ -56,8 +56,8 @@ class StartFreeformReceiver : BroadcastReceiver() {
         }
 
         val appContext = context.applicationContext ?: context
-        // 进程被广播冷拉起时前台服务不在，把手/侧边栏面板都不在，用户会以为「只出来一个窗口」。
-        // 这里补一次服务启动；无障碍（KeepAlive）模式下不能起前台服务，两者会互相顶掉。
+        // When the process is cold-started by the broadcast, the foreground service is absent—so are the handle and the sidebar panel—and the user thinks "only one window appeared".
+        // We start the service once here; in accessibility (KeepAlive) mode the foreground service must not be started, as the two would override each other.
         val sp = appContext.getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
         val foregroundMode = sp.getInt("service_type", ForegroundService.SERVICE_TYPE) == ForegroundService.SERVICE_TYPE
         if (foregroundMode && !ForegroundService.isAlive()) {
@@ -74,16 +74,16 @@ class StartFreeformReceiver : BroadcastReceiver() {
     }
 
     /**
-     * 等 ControlService 的 binder 到位再建窗，最长 [BIND_TIMEOUT_MS]。
+     * Waits for ControlService's binder to be ready before creating the window, up to [BIND_TIMEOUT_MS].
      *
-     * [MiFreeform] 在 Application.onCreate 里挂了 sticky 的 binderReceivedListener，
-     * 会异步 bindUserService；冷拉起时这一步要几十毫秒到几秒。直接 new FreeformView
-     * 的话它的 init 判定为「未绑定」，只会弹个 Toast —— 又变成静默失败。
+     * [MiFreeform] registers a sticky binderReceivedListener in Application.onCreate,
+     * which asynchronously calls bindUserService; on a cold start this takes anywhere from tens of ms to seconds.
+     * If we directly `new FreeformView`, its init judges "not bound" and only pops a Toast—again a silent failure.
      *
-     * 只发起一次绑定：Shizuku 的 binder 到位时那个 sticky 监听器会自己 bindUserService，
-     * 本方法只需要轮询 pingBinder。以前这里是每 200ms 重发一次 initShizuku()，
-     * 而 Shizuku 没跑时每次绑定都会抛异常并写一条诊断记录（实测 8 秒 41 条），
-     * 通知跟着刷四十多次——重复尝试对“到位”这件事没有任何帮助。
+     * We initiate binding only once: when Shizuku's binder arrives, that sticky listener calls bindUserService itself,
+     * so this method only needs to poll pingBinder. Previously it re-sent initShizuku() every 200ms,
+     * and when Shizuku wasn't running each bind attempt threw an exception and wrote a diagnostic record (measured: 41 records in 8s),
+     * firing notifications forty-some times—repeated attempts do nothing to help things "arrive".
      */
     private fun awaitControlService(context: Context, packageName: String, activityName: String, userId: Int, waitedMs: Long) {
         if (MiFreeform.me?.getControlService()?.asBinder()?.pingBinder() == true) {
@@ -92,8 +92,8 @@ class StartFreeformReceiver : BroadcastReceiver() {
             return
         }
         if (waitedMs >= BIND_TIMEOUT_MS) {
-            // 到点仍未就绪：交给 FreeformView 的未绑定分支处理（它会记录并提示 Shizuku 没跑），
-            // 这里只补一条「我们确实等过」的现场，便于区分「没收到广播」和「收到但起不来」。
+            // Still not ready at the deadline: let FreeformView's not-bound branch handle it (it logs and hints that Shizuku isn't running);
+            // here we only add a "we really did wait" record, to distinguish "broadcast never received" from "received but couldn't start".
             Log.w(TAG, "control_service_timeout waited=${waitedMs}ms pkg=$packageName")
             DiagnosticsLog.recordRes(context, "receiver_bind_timeout", R.string.diag_receiver_bind_timeout, packageName)
             createFreeform(context, packageName, activityName, userId)
@@ -106,7 +106,7 @@ class StartFreeformReceiver : BroadcastReceiver() {
     }
 
     private fun createFreeform(context: Context, packageName: String, activityName: String, userId: Int) {
-        // 同一应用已有小窗时先清掉旧实例
+        // When the app already has a freeform, destroy the old instance first
         FreeformHelper.destroyExistingFreeform(packageName, userId)
 
         FreeformView(
@@ -122,7 +122,7 @@ class StartFreeformReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "StartFreeformReceiver"
-        // 双投递去重窗口：同一条广播的两次投递在同一毫秒级队列里，1.5 秒足够覆盖调度抖动。
+        // Double-delivery dedup window: the two deliveries of one broadcast land in the same ms-level queue, and 1.5s is enough to cover scheduling jitter.
         private const val DEDUPE_WINDOW_MS = 1500L
         private const val POLL_INTERVAL_MS = 200L
         private const val BIND_TIMEOUT_MS = 8000L

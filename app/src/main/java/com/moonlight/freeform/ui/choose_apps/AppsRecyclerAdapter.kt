@@ -28,9 +28,9 @@ import kotlinx.coroutines.launch
 /**
  * @author sunshine
  * @date 2021/1/31
- * 小窗应用回收布局适配器
- * @param allAppsList 所有应用列表
- * @param appsList 已经选择的应用列表
+ * Adapter for the freeform app list
+ * @param allAppsList the full list of apps
+ * @param appsList the list of already-selected apps
  */
 class AppsRecyclerAdapter<T>(
     private var allAppsList: ArrayList<LauncherActivityInfo>,
@@ -68,7 +68,7 @@ class AppsRecyclerAdapter<T>(
             holder.switch.isChecked = contains(NotificationAppsEntity(filterAllAppsList[position].applicationInfo.packageName, UserHandle.getUserId(filterAllAppsList[position].user, filterAllAppsList[position].applicationInfo.uid)))
         }
 
-        //点击对应改变数据库
+        //Tapping toggles the corresponding entry in the database
         holder.view.setOnClickListener {
             holder.switch.isChecked = !holder.switch.isChecked
             if (holder.switch.isChecked) {
@@ -113,7 +113,7 @@ class AppsRecyclerAdapter<T>(
     }
 
     /**
-     * 已经选择的列表中是否有item
+     * Whether the selected list already contains the item
      */
     private fun contains(item: FreeFormAppsEntity): Boolean {
         appsList.forEach {
@@ -124,7 +124,7 @@ class AppsRecyclerAdapter<T>(
     }
 
     /**
-     * 已经选择的列表中是否有item
+     * Whether the selected list already contains the item
      */
     private fun contains(item: NotificationAppsEntity): Boolean {
         appsList.forEach {
@@ -135,7 +135,7 @@ class AppsRecyclerAdapter<T>(
     }
 
     /**
-     * 从列表中移除
+     * Remove from the list
      */
     private fun remove(item: FreeFormAppsEntity) {
         var toBeRemovedItem: T? = null
@@ -151,7 +151,7 @@ class AppsRecyclerAdapter<T>(
     }
 
     /**
-     * 从列表中移除
+     * Remove from the list
      */
     private fun remove(item: NotificationAppsEntity) {
         var toBeRemovedItem: T? = null

@@ -10,11 +10,11 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 /**
  * @author sunshine
  * @date 2021/2/28
- * 经过排查，小窗内旋转屏幕系统UI闪退是因为DisplayLayout中调用set方法会为空，那么，就将上次的参数保存，如果遇到空，就设置给这个
+ * After investigation, rotating the screen inside a freeform crashed SystemUI because the set method on DisplayLayout was called with null; so we save the previous arguments and, when we hit a null, feed the saved one back in.
  */
 class HookSystemUI : IXposedHookLoadPackage {
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam?) {
-        //只有Android 11上才有
+        //Only present on Android 11
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && lpparam?.packageName == "com.android.systemui") {
             val clazz = XposedHelpers.findClass("com.android.systemui.wm.DisplayLayout", lpparam.classLoader)
             var lastObj: Any? = null

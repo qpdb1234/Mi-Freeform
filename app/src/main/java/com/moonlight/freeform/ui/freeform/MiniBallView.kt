@@ -18,14 +18,14 @@ import com.moonlight.freeform.utils.PermissionUtils
 import kotlin.math.roundToInt
 
 /**
- * 收起后的悬浮球。
+ * The floating ball shown after collapse.
  *
- * 与「收到侧边栏」是两种独立的收起方式：
- * - 侧边栏：完全移除窗口，只保留 FreeformHelper 里的记录，用户从侧边栏列表重新点开。
- * - 悬浮球：在屏幕边缘放一个应用图标的圆球，点击即恢复小窗，可拖动、可调透明度和大小。
+ * It is an independent collapse mode from "collapse into the sidebar":
+ * - Sidebar: fully removes the window, keeping only a record in FreeformHelper; the user reopens it from the sidebar list.
+ * - Floating ball: places a circular app-icon ball on the screen edge; tapping restores the freeform; it is draggable with adjustable transparency and size.
  *
- * 悬浮球本身不持有虚拟屏，它只是「这个小窗还活着」的入口，
- * 真正的 FreeformView 仍然在后台，点击球时调 fromBackstage() 把窗口加回来。
+ * The ball itself does not own a virtual display; it is only an entry point meaning "this freeform is still alive".
+ * The real FreeformView stays in the background; tapping the ball calls fromBackstage() to re-add the window.
  */
 internal class MiniBallView(
     context: Context,
@@ -41,7 +41,7 @@ internal class MiniBallView(
     private var imageView: ImageView? = null
     private var windowParams: WindowManager.LayoutParams? = null
 
-    // 悬浮球在屏幕上的位置（收起时记住，下次复现）
+    // The ball's position on screen (remembered on collapse, reused on next restore)
     private var ballX = 0
     private var ballY = 0
 
@@ -49,16 +49,16 @@ internal class MiniBallView(
     private var downRawY = 0f
     private var isDragging = false
 
-    // 拖动是高频路径（每秒几十个 MOVE），updateViewLayout 一旦持续失败就会刷日志。
-    // 按手势限流：每次按下只记第一次失败。
+    // Dragging is a high-frequency path (dozens of MOVE events per second); updateViewLayout would flood logs if it keeps failing.
+    // Throttle per gesture: log only the first failure per press.
     private var loggedDragFailure = false
 
-    /** 显示悬浮球。 */
+    /** Show the floating ball. */
     @SuppressLint("ClickableViewAccessibility")
     fun show() {
         if (rootView != null) return
-        // 先裁决窗口类型：两个资格都没有时直接放弃，一次 addView 都不调
-        //（原因见 PermissionUtils.pickOverlayWindowType：被拒的请求会毒掉全进程的悬浮窗）。
+        // Decide the window type first: if neither qualification is held, give up immediately without calling addView once
+        // (see PermissionUtils.pickOverlayWindowType for why: a rejected request poisons overlay windows process-wide).
         val windowType = overlayWindowType()
         if (windowType == null) {
             Log.w(TAG, "miniball_start_rejected no_overlay_permission")
@@ -68,14 +68,14 @@ internal class MiniBallView(
 
         val sp = context.getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
         val sizeDp = sp.getInt(KEY_BALL_SIZE_DP, DEFAULT_SIZE_DP).coerceIn(MIN_SIZE_DP, MAX_SIZE_DP)
-        // 设置项语义是「透明度」：数值越大越透明。存的是 0~10 的透明度，
-        // 这里换算成 View.alpha（0 全透明 ~ 1 不透明）= 1 - 透明度/10。
+        // The setting's semantics are "transparency": larger value means more transparent. Stored as 0~10 transparency,
+        // converted here to View.alpha (0 fully transparent ~ 1 opaque) = 1 - transparency/10.
         val transparency = sp.getInt(KEY_BALL_ALPHA, DEFAULT_ALPHA).coerceIn(0, 10)
         val alpha = 1f - transparency / 10f
 
         val sizePx = (sizeDp * density).roundToInt()
 
-        // 收起位置：优先用上次记住的位置，否则贴屏幕右侧边缘垂直居中。
+        // Collapse position: prefer the last remembered position, otherwise snap to the right screen edge, vertically centered.
         val metrics = context.resources.displayMetrics
         if (ballX == 0 && ballY == 0) {
             ballX = metrics.widthPixels - sizePx
@@ -83,14 +83,14 @@ internal class MiniBallView(
         }
 
         val container = FrameLayout(context).apply {
-            // 拖动靠根容器接管，ImageView 只负责显示图标。
+            // Dragging is handled by the root container; the ImageView only displays the icon.
             setOnTouchListener { _, event -> handleTouch(event, sizePx) }
         }
 
         val icon = ImageView(context).apply {
             setImageDrawable(loadAppIcon())
             this.alpha = alpha
-            // 圆形裁剪：应用图标一般是方的，裁圆后更像悬浮球。
+            // Circular clipping: app icons are usually square; clipping to a circle makes it look more like a floating ball.
             clipToOutline = true
             outlineProvider = object : android.view.ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: android.graphics.Outline) {
@@ -130,7 +130,7 @@ internal class MiniBallView(
         windowParams = params
     }
 
-    /** 隐藏并释放悬浮球（恢复小窗或退出时调用）。 */
+    /** Hide and release the floating ball (called when restoring the freeform or exiting). */
     fun dismiss() {
         val view = rootView ?: return
         rootView = null
@@ -139,20 +139,20 @@ internal class MiniBallView(
         try {
             windowManager.removeViewImmediate(view)
         } catch (e: Exception) {
-            // rootView 已经置 null，这句失败就再也没人能把窗口摘下来——悬浮球变僵尸窗口，
-            // 并且下次 show() 也认为自己是重复调用而直接 return。
+            // rootView is already set to null, so if this fails no one can ever remove the window—the ball becomes a zombie window,
+            // and the next show() also thinks it's a duplicate call and returns directly.
             Log.w(TAG, "miniball_remove_failed", e)
         }
     }
 
-    /** 悬浮球是否正在显示。 */
+    /** Whether the floating ball is currently showing. */
     fun isShowing(): Boolean = rootView != null
 
     private fun overlayWindowType(): Int? {
-        // 与 Mi-Freeform 既有悬浮窗一致：有overlay权限用 APPLICATION_OVERLAY，
-        // 否则只有在无障碍服务真的开着时才能用 ACCESSIBILITY_OVERLAY。
-        // 旧写法是无条件退回 ACCESSIBILITY_OVERLAY，可无障碍服务没开时那一次 addView 必定被拒，
-        // 正好构成上面说的全进程隐藏，所以这里返回 null 让调用方放弃挂窗。
+        // Consistent with Mi-Freeform's existing overlay windows: use APPLICATION_OVERLAY if the overlay permission is granted,
+        // otherwise ACCESSIBILITY_OVERLAY can only be used when the accessibility service is actually on.
+        // The old form unconditionally fell back to ACCESSIBILITY_OVERLAY, but when the accessibility service wasn't on, that addView was always rejected,
+        // which produced exactly the process-wide hiding described above, so here we return null to let the caller skip attaching the window.
         return when {
             android.provider.Settings.canDrawOverlays(context) ->
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -176,7 +176,7 @@ internal class MiniBallView(
             MotionEvent.ACTION_MOVE -> {
                 val dx = event.rawX - downRawX
                 val dy = event.rawY - downRawY
-                // 移动超过阈值才算拖动，避免点击被误判。
+                // Movement beyond the threshold counts as dragging, to avoid misjudging a tap.
                 if (!isDragging && (kotlin.math.abs(dx) > DRAG_THRESHOLD_PX ||
                             kotlin.math.abs(dy) > DRAG_THRESHOLD_PX)
                 ) {
@@ -202,7 +202,7 @@ internal class MiniBallView(
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (!isDragging) {
-                    // 单击 = 恢复小窗
+                    // Single tap = restore the freeform
                     restoreFreeform()
                 } else {
                     rememberPosition(params)
@@ -236,7 +236,7 @@ internal class MiniBallView(
         ballY = params.y
     }
 
-    /** 取应用图标；取不到时退化成一个半透明圆点，保证球不会是空的。 */
+    /** Loads the app icon; if unavailable, degrades to a semi-transparent dot so the ball is never empty. */
     private fun loadAppIcon(): android.graphics.drawable.Drawable {
         return try {
             val config = freeformView.config
@@ -261,11 +261,11 @@ internal class MiniBallView(
         const val DEFAULT_SIZE_DP = 48
         const val MIN_SIZE_DP = 32
         const val MAX_SIZE_DP = 96
-        const val DEFAULT_ALPHA = 7 // 0~10 的「透明度」，默认 7（alpha = 1 - 7/10 = 0.3）
+        const val DEFAULT_ALPHA = 7 // 0~10 "transparency", default 7 (alpha = 1 - 7/10 = 0.3)
 
         const val DRAG_THRESHOLD_PX = 16f
 
-        // TYPE_ACCESSIBILITY_OVERLAY，与 FreeformGestureController 一致。
+        // TYPE_ACCESSIBILITY_OVERLAY, consistent with FreeformGestureController.
         const val TYPE_ACCESSIBILITY_OVERLAY = 2032
     }
 }

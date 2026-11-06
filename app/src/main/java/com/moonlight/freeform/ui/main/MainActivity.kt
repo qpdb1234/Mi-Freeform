@@ -10,7 +10,7 @@ import com.moonlight.freeform.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
-    //应用内语言切换：按设置包裹基础 Context（见 LocaleHelper）
+    //In-app language switch: wrap the base Context per the saved setting (see LocaleHelper)
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.moonlight.freeform.utils.LocaleHelper.wrap(newBase))
     }
@@ -24,7 +24,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 顶部标题栏与底部导航均已移除，内容需要避开状态栏
+        // The top title bar and bottom navigation have both been removed, so the content must avoid the status bar
         ViewCompat.setOnApplyWindowInsetsListener(binding.settingContainer) { v, insets ->
             val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
             v.setPadding(0, statusBarHeight, 0, 0)

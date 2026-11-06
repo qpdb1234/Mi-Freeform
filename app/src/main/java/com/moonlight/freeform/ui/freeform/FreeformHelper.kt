@@ -16,23 +16,23 @@ import kotlin.math.roundToInt
 /**
  * @date 2022/8/22
  * @author sunshine0523
- * 小窗帮助类
+ * Freeform helper class
  */
 object FreeformHelper {
-    //小窗默认高度
+    //Default freeform height
     const val PORTRAIT_HEIGHT = 1200
     const val LANDSCAPE_HEIGHT = 800
 
-    //小窗默认DPI
+    //Default freeform DPI
     const val PORTRAIT_DPI = 500
     const val LANDSCAPE_DPI = 500
 
-    //正在展示的小窗
+    //The freeforms currently shown
     private val freeformStackSet = StackSet()
-    //挂在后台的小窗
+    //The freeforms suspended in the background
     private val miniFreeformStackSet = StackSet()
 
-    //记录包名+userId，更加快速
+    //Records package name + userId for faster lookups
     private val freeformPackageSet = HashSet<String>()
     private val miniFreeformPackageSet = HashSet<String>()
 
@@ -45,8 +45,8 @@ object FreeformHelper {
     }
 
     /**
-     * @param defaultDisplay 默认屏幕，用于获取屏幕方向
-     * @param widthHeightRadio 小窗的宽高比例
+     * @param defaultDisplay the default display, used to read the screen orientation
+     * @param widthHeightRadio the freeform's width-to-height ratio
      */
     fun getDefaultHeight(context: Context, defaultDisplay: Display, widthHeightRadio: Float): Int {
         val screenWidth = min(context.resources.displayMetrics.heightPixels, context.resources.displayMetrics.widthPixels)
@@ -63,7 +63,7 @@ object FreeformHelper {
         return if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
             (screenHeight * sp.getInt("freeform_landscape_dpi", 75) / 100.0f / freeformHeight * screenDpi).roundToInt()
         } else {
-            //这个0.75就是测试出来的，就是感官上dpi合适的值
+            //This 0.75 was found empirically; it's the DPI value that simply looks right
             (screenHeight * sp.getInt("freeform_dpi", 75) / 100.0f / freeformHeight * screenDpi).roundToInt()
         }
     }
@@ -73,7 +73,7 @@ object FreeformHelper {
     }
 
     /**
-     * @param rotation 屏幕方向是否是竖屏
+     * @param rotation whether the screen orientation is portrait
      * @see Surface.ROTATION_0
      * @return orientation
      */
@@ -82,7 +82,7 @@ object FreeformHelper {
     }
 
     /**
-     * 判断该小窗是否在屏幕最上层，即可以操作的层
+     * Whether this freeform is on the topmost, i.e. operable, layer
      */
     fun isShowingFirst(freeformView: FreeformViewAbs): Boolean {
         return freeformStackSet.peek() == freeformView
@@ -116,21 +116,21 @@ object FreeformHelper {
         return miniFreeformStackSet
     }
 
-    //检查要启动的小窗是否正在小窗中运行
+    //Check whether the freeform to be launched is already running in a freeform
     fun isAppInFreeform(packageName: String, userId: Int): Boolean {
         return freeformPackageSet.contains("$packageName/$userId")
     }
-    //检查要启动的小窗是否正在小窗中后台运行
+    //Check whether the freeform to be launched is already running in the background in a freeform
     fun isAppInMiniFreeform(packageName: String, userId: Int): Boolean {
         return miniFreeformPackageSet.contains("$packageName/$userId")
     }
 
     /**
-     * 彻底清掉某个应用的旧小窗（前台小窗 + 后台挂起的小窗）。
+     * Fully destroy an app's previous freeform (foreground freeform + background-suspended freeform).
      *
-     * 用于「同一应用再次启动小窗」之前：旧实例可能正在前台显示，
-     * 也可能已经收起到侧边栏或变成了悬浮球，两种都要清干净，
-     * 否则会出现两个小窗、或者留下一个点不动也没画面的孤儿球。
+     * Used before "the same app launches a freeform again": the old instance may be showing in the foreground,
+     * or may already be collapsed into the sidebar or turned into a floating ball; both must be cleaned up,
+     * otherwise you get two freeforms, or an orphan ball that neither responds to taps nor shows any content.
      */
     fun destroyExistingFreeform(packageName: String, userId: Int) {
         if (isAppInFreeform(packageName, userId)) {

@@ -10,11 +10,11 @@ import androidx.annotation.RequiresApi
 /**
  * @author sunshine
  * @date 2021/3/22
- * 包相关辅助函数
+ * Package-related helper functions
  */
 object PackageUtils {
     
-    //判断是否安装了这个应用
+    //Whether this app is installed
     fun hasInstallThisPackage(packageName: String, packageManager: PackageManager): Boolean {
         return try {
             packageManager.getApplicationInfo(packageName, 0)
@@ -24,7 +24,7 @@ object PackageUtils {
         }
     }
 
-    //判断某个用户是否安装了这个应用
+    //Whether a given user has this app installed
     fun hasInstallThisPackageWithUserId(
         packageName: String,
         launcherApps: LauncherApps,

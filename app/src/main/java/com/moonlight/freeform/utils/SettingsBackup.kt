@@ -10,36 +10,36 @@ import org.json.JSONObject
 import java.io.OutputStream
 
 /**
- * 设置备份与恢复。
+ * Settings backup and restore.
  *
- * 备份范围一共有三块：
- * 1. APP_SETTINGS_NAME（"app_settings"）SharedPreferences —— 设置页里的全部开关与参数；
- * 2. FreeFormAppsEntity —— 侧边栏快捷应用列表（含 sortNum 排序顺序）；
- * 3. NotificationAppsEntity —— 通知栏小窗应用列表。
+ * The backup covers three parts:
+ * 1. The APP_SETTINGS_NAME ("app_settings") SharedPreferences—all switches and parameters on the settings page;
+ * 2. FreeFormAppsEntity—the sidebar shortcut app list (including the sortNum ordering);
+ * 3. NotificationAppsEntity—the notification-bar freeform app list.
  *
- * 后两块存在 Room 数据库里，不在 SharedPreferences 里，所以不能光遍历 sp.all，
- * 要单独走 DatabaseRepository 导出/导入。
+ * The latter two live in the Room database, not in SharedPreferences, so we can't just iterate sp.all;
+ * they must be exported/imported separately through DatabaseRepository.
  *
- * 格式选 JSON 而不是直接复制 SharedPreferences 的 xml 文件：
- * xml 里带有类型前缀（int/boolean/set），跨版本/跨机型恢复时容易出错；
- * JSON 显式记录类型，恢复时按类型写回，可读性也好，出问题时能直接看。
+ * The format is JSON rather than directly copying the SharedPreferences xml file:
+ * the xml carries type prefixes (int/boolean/set), which are error-prone across versions/devices on restore;
+ * JSON records types explicitly, writes back by type on restore, and is readable—so problems can be inspected directly.
  *
- * 不备份的东西：小窗运行时位置（每次打开都会重算）、版本号字段（version/
- * version_privacy 是用于判断是否首次启动的，恢复过去没有意义）。
+ * Not backed up: freeform runtime position (recomputed every open), and the version fields (version/
+ * version_privacy are used to detect first launch; restoring them is meaningless).
  */
 object SettingsBackup {
 
     private const val TAG = "SettingsBackup"
 
-    /** 备份文件的 magic header，用于恢复时校验是不是本应用的备份。 */
+    /** The backup file's magic header, used on restore to verify it's this app's backup. */
     private const val MAGIC = "MiFreeformSettings"
 
     private const val VERSION = 2
 
     /**
-     * 导出全部设置到指定输出流（由调用方提供，通常是 SAF 选的文件）。
+     * Exports all settings to the given output stream (provided by the caller, usually a file picked via SAF).
      *
-     * @return true = 写入成功
+     * @return true = write succeeded
      */
     fun export(context: Context, out: OutputStream): Boolean {
         return try {
@@ -51,7 +51,7 @@ object SettingsBackup {
             root.put("magic", MAGIC)
             root.put("version", VERSION)
             root.put("settings", settingsToJson(sp))
-            // 侧边栏快捷应用 + 通知栏应用存在数据库里，不在 sp 里，单独导出。
+            // Sidebar shortcut apps + notification-bar apps live in the database, not in sp, so export them separately.
             root.put("freeform_apps", appsToJson(DatabaseRepository(context)))
             root.put("notification_apps", notificationAppsToJson(DatabaseRepository(context)))
             out.bufferedWriter().use { it.write(root.toString(2)) }
@@ -63,12 +63,12 @@ object SettingsBackup {
     }
 
     /**
-     * 从输入流恢复设置（SAF 选的文件）。
+     * Restores settings from an input stream (a file picked via SAF).
      *
-     * 恢复成功后调用方需要刷新当前已显示的 Preference 项，
-     * 这里只负责把值写进 SharedPreferences 与数据库。
+     * After a successful restore the caller must refresh the currently displayed Preference items;
+     * this only writes the values into SharedPreferences and the database.
      *
-     * @return true = 解析并写入成功
+     * @return true = parse and write succeeded
      */
     fun import(context: Context, input: java.io.InputStream): Boolean {
         return try {
@@ -83,17 +83,17 @@ object SettingsBackup {
                 com.moonlight.freeform.app.MiFreeform.APP_SETTINGS_NAME,
                 Context.MODE_PRIVATE
             )
-            // 先恢复设置项，再恢复应用列表，两者互不依赖。
+            // Restore settings first, then the app lists; the two are independent.
             root.optJSONArray("settings")?.let { fromJson(sp, it) }
-            // 改名之前导出的备份文件里是带旧前缀的键名，刚写进去还是读不到的死档，
-            // 这里立即再搬迁一次，不等到下次启动。
+            // Backup files exported before the rename contain key names with the old prefix; just written, they'd still be dead records that can't be read,
+            // so migrate again immediately here rather than waiting for the next launch.
             SettingsKeyMigration.migrateFrom(sp)
 
             val repository = DatabaseRepository(context)
             root.optJSONArray("freeform_apps")?.let { freeformAppsFromJson(repository, it) }
             root.optJSONArray("notification_apps")?.let { notificationAppsFromJson(repository, it) }
 
-            // 通知小窗的应用列表靠这个开关触发界面刷新，不捅一下恢复后界面不会变。
+            // The notification freeform app list relies on this switch to trigger a UI refresh; without toggling it the UI won't update after restore.
             sp.edit().putBoolean("notify_freeform_changed", !sp.getBoolean("notify_freeform_changed", false)).apply()
 
             true
@@ -103,11 +103,11 @@ object SettingsBackup {
         }
     }
 
-    /** 把全部键值序列化成 JSON 数组。 */
+    /** Serializes all key-value pairs into a JSON array. */
     private fun settingsToJson(sp: SharedPreferences): JSONArray {
         val arr = JSONArray()
         for (key in sp.all.keys) {
-            // 运行时状态与版本判断字段不备份。
+            // Runtime state and first-launch detection fields are not backed up.
             if (key in EXCLUDED_KEYS) continue
             val entry = JSONObject()
             entry.put("key", key)
@@ -143,7 +143,7 @@ object SettingsBackup {
         return arr
     }
 
-    /** 按记录的类型逐条写回。 */
+    /** Writes back each entry according to its recorded type. */
     private fun fromJson(sp: SharedPreferences, arr: JSONArray) {
         val editor = sp.edit()
         for (i in 0 until arr.length()) {
@@ -170,10 +170,10 @@ object SettingsBackup {
     }
 
     /**
-     * 侧边栏快捷应用列表。
+     * The sidebar shortcut app list.
      *
-     * sortNum 是排序主键，必须一起导出，不然恢复回来应用顺序就乱了。
-     * 备份文件里数组元素的顺序就是侧边栏里从上到下的顺序。
+     * sortNum is the ordering key and must be exported together, otherwise the app order would be scrambled after restore.
+     * The order of array elements in the backup file is exactly the top-to-bottom order in the sidebar.
      */
     private fun appsToJson(repository: DatabaseRepository): JSONArray {
         val arr = JSONArray()
@@ -208,7 +208,7 @@ object SettingsBackup {
 
     private fun freeformAppsFromJson(repository: DatabaseRepository, arr: JSONArray) {
         try {
-            // 全量替换：先清空再按备份顺序逐条写回，否则会和现有记录混在一起。
+            // Full replacement: clear first, then write back entry by entry in backup order, otherwise it would mix with existing records.
             repository.deleteAllFreeForm()
             for (i in 0 until arr.length()) {
                 val entry = arr.optJSONObject(i) ?: continue
@@ -239,7 +239,7 @@ object SettingsBackup {
         }
     }
 
-    /** 不参与备份的键：运行时位置 + 首次启动判断字段。 */
+    /** Keys excluded from backup: runtime position + first-launch detection fields. */
     private val EXCLUDED_KEYS = setOf(
         "version", "version_privacy",
         "freeform_remember_x", "freeform_remember_y",

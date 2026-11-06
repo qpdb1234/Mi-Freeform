@@ -18,8 +18,8 @@ class InputManager(private val manager: IInterface) {
     private var injectInputEventMethod: Method? = null
     private var setDisplayIdMethod: Method? = null
 
-    // 注入与设屏号都在每个输入事件的热路径上，一旦永久失败就会按事件频率刷日志。
-    // 因此每类失败只记第一次，既能留下归因线索，又不会把 logcat 冲掉。
+    // Injecting and setting the display id are both on the hot path of every input event, so a permanent failure would log at event frequency.
+    // Therefore each failure kind is logged only once, leaving an attribution clue without flooding logcat.
     private val loggedInjectFailure = AtomicBoolean(false)
     private val loggedSetDisplayIdFailure = AtomicBoolean(false)
 
@@ -64,7 +64,7 @@ class InputManager(private val manager: IInterface) {
     }
 
     /**
-     * 反射获取setDisplayId(int)方法
+     * Reflectively obtain the setDisplayId(int) method
      */
     private fun getSetDisplayIdMethod(): Method? {
         if (setDisplayIdMethod == null) {
@@ -77,9 +77,9 @@ class InputManager(private val manager: IInterface) {
     }
 
     /**
-     * 设置displayId
-     * 将副屏id传入
-     * 用于控制副屏
+     * Set the displayId.
+     * Passes in the secondary display id,
+     * used to control the secondary display.
      */
     private fun setDisplayId(inputEvent: InputEvent, displayId: Int): Boolean {
         return try {
@@ -88,7 +88,7 @@ class InputManager(private val manager: IInterface) {
             method?.invoke(inputEvent, displayId)
             true
         }catch (e: Exception) {
-            // 这一条失败意味着所有事件都只会落到主屏，小窗点不动；必须能查到。
+            // This failure means every event lands only on the main display and the freeform becomes untappable; it must be findable.
             if (loggedSetDisplayIdFailure.compareAndSet(false, true)) {
                 Log.w(TAG, "set_display_id_failed display=$displayId", e)
             }

@@ -18,36 +18,36 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * 波浪侧边栏
+ * Wave sidebar
  * author: imilk
  * https://github.com/Solartisan/WaveSideBar.git
- * 米窗声明：该类作者并非米窗，作者信息和源代码地址见上
+ * MiFreeform notice: the author of this class is not MiFreeform; see the author info and source URL above
  */
 public class WaveSideBarView extends View {
 
     private static final String TAG = "WaveSlideBarView";
 
-    // 计算波浪贝塞尔曲线的角弧长值
+    // Computes the angular arc-length value of the wave Bezier curve
     private static final double ANGLE = Math.PI * 45 / 180;
     private static final double ANGLE_R = Math.PI * 90 / 180;
     private OnTouchLetterChangeListener listener;
 
-    // 渲染字母表
+    // Renders the letter table
     private List<String> mLetters;
 
-    // 当前选中的位置
+    // The currently selected position
     private int mChoose = -1;
 
     private int oldChoose ;
 
     private int newChoose ;
 
-    // 字母列表画笔
+    // Letter-list paint
     private Paint mLettersPaint = new Paint();
 
-    // 提示字母画笔
+    // Hint-letter paint
     private Paint mTextPaint = new Paint();
-    // 波浪画笔
+    // Wave paint
     private Paint mWavePaint = new Paint();
 
     private float mTextSize;
@@ -60,30 +60,30 @@ public class WaveSideBarView extends View {
     private int mItemHeight;
     private int mPadding;
 
-    // 波浪路径
+    // Wave path
     private Path mWavePath = new Path();
 
-    // 圆形路径
+    // Circle path
     private Path mBallPath = new Path();
 
-    // 手指滑动的Y点作为中心点
-    private int mCenterY; //中心点Y
+    // The Y point of the finger swipe as the center
+    private int mCenterY; // center Y
 
-    // 贝塞尔曲线的分布半径
+    // Distribution radius of the Bezier curve
     private int mRadius;
 
-    // 圆形半径
+    // Circle radius
     private int mBallRadius;
-    // 用于过渡效果计算
+    // Used for transition-effect computation
     ValueAnimator mRatioAnimator;
 
-    // 用于绘制贝塞尔曲线的比率
+    // Ratio used to draw the Bezier curve
     private float mRatio;
 
-    // 选中字体的坐标
+    // Coordinates of the selected letter
     private float mPosX, mPosY;
 
-    // 圆形中心点X
+    // Center X of the circle
     private float mBallCentreX;
 
     public WaveSideBarView(Context context) {
@@ -187,16 +187,16 @@ public class WaveSideBarView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        //绘制字母列表
+        // Draw the letter list
         drawLetters(canvas);
 
-        //绘制波浪
+        // Draw the wave
         drawWavePath(canvas);
 
-        //绘制圆
+        // Draw the circle
         drawBallPath(canvas);
 
-        //绘制选中的字体
+        // Draw the selected letter
         drawChooseText(canvas);
 
     }
@@ -244,14 +244,14 @@ public class WaveSideBarView extends View {
 
     private void drawChooseText(Canvas canvas) {
         if (mChoose != -1) {
-            // 绘制右侧选中字符
+            // Draw the selected character on the right
             mLettersPaint.reset();
             mLettersPaint.setColor(mTextColorChoose);
             mLettersPaint.setTextSize(mTextSize);
             mLettersPaint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText(mLetters.get(mChoose), mPosX, mPosY, mLettersPaint);
 
-            // 绘制提示字符
+            // Draw the hint character
             if (mRatio >= 0.9f) {
                 String target = mLetters.get(mChoose);
                 Paint.FontMetrics fontMetrics = mTextPaint.getFontMetrics();
@@ -264,26 +264,26 @@ public class WaveSideBarView extends View {
     }
 
     /**
-     * 绘制波浪
+     * Draw the wave
      *
      * @param canvas
      */
     private void drawWavePath(Canvas canvas) {
         mWavePath.reset();
-        // 移动到起始点
+        // Move to the start point
         mWavePath.moveTo(mWidth, mCenterY - 3 * mRadius);
-        //计算上部控制点的Y轴位置
+        // Compute the Y position of the upper control point
         int controlTopY = mCenterY - 2 * mRadius;
 
-        //计算上部结束点的坐标
+        // Compute the coordinates of the upper end point
         int endTopX = (int) (mWidth - mRadius * Math.cos(ANGLE) * mRatio);
         int endTopY = (int) (controlTopY + mRadius * Math.sin(ANGLE));
         mWavePath.quadTo(mWidth, controlTopY, endTopX, endTopY);
 
-        //计算中心控制点的坐标
+        // Compute the coordinates of the center control point
         int controlCenterX = (int) (mWidth - 1.8f * mRadius * Math.sin(ANGLE_R) * mRatio);
         int controlCenterY = mCenterY;
-        //计算下部结束点的坐标
+        // Compute the coordinates of the lower end point
         int controlBottomY = mCenterY + 2 * mRadius;
         int endBottomY = (int) (controlBottomY - mRadius * Math.cos(ANGLE));
         mWavePath.quadTo(controlCenterX, controlCenterY, endTopX, endBottomY);
@@ -295,7 +295,7 @@ public class WaveSideBarView extends View {
     }
 
     private void drawBallPath(Canvas canvas) {
-        //x轴的移动路径
+        // Movement path along the x axis
         mBallCentreX = (mWidth + mBallRadius) - (2.0f * mRadius + 2.0f * mBallRadius) * mRatio;
 
         mBallPath.reset();
@@ -319,7 +319,7 @@ public class WaveSideBarView extends View {
             public void onAnimationUpdate(ValueAnimator value) {
 
                 mRatio = (float) value.getAnimatedValue();
-                //球弹到位的时候，并且点击的位置变了，即点击的时候显示当前选择位置
+                // When the ball has sprung into place and the tapped position changed, i.e. show the current selected position on tap
                 if (mRatio==1f&&oldChoose != newChoose){
                     if (newChoose >= 0 && newChoose < mLetters.size()) {
                         mChoose = newChoose;

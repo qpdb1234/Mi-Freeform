@@ -18,15 +18,15 @@ import com.moonlight.freeform.utils.PermissionUtils
 import rikka.sui.Sui
 
 /**
- * 设置页顶部的三张状态卡片：Xposed / Shizuku-Sui / 无障碍。
+ * The three status cards at the top of the settings page: Xposed / Shizuku-Sui / Accessibility.
  *
- * 从原 HomeFragment 迁移而来。三张卡片各占一行、与设置条目等高，
- * 其中无障碍卡片始终显示（原来仅在未开启时出现）。
+ * Migrated from the original HomeFragment. Each card occupies one row and aligns with the
+ * settings items; the accessibility card is now always shown (previously only when disabled).
  */
 class StatusCards(
     private val fragment: Fragment,
-    // 对外只读：SettingFragment 靠它判断“绑定的还是不是原来那个容器”，
-    // 避免同一个容器被反复 addView 卡片。
+    // Exposed read-only: SettingFragment uses it to detect whether the bound container is
+    // still the original one, preventing the cards from being addView'd repeatedly.
     val container: ViewGroup
 ) : View.OnClickListener {
 
@@ -39,7 +39,7 @@ class StatusCards(
     fun init() {
         if (initialized) return
         initialized = true
-        //防一手：重复进入时先把旧卡片清掉，避免同一个容器里叠出多套。
+        // Safeguard: on re-entry remove old cards first to avoid stacking duplicates in one container.
         container.removeAllViews()
         sp = fragment.requireContext()
             .getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
@@ -58,7 +58,7 @@ class StatusCards(
         }
     }
 
-    /** 无障碍卡片的跳转回调，由 SettingFragment 注入（复用其已注册的 launcher）。 */
+    /** Navigation callback for the accessibility card, injected by SettingFragment (reuses its registered launcher). */
     var onGoToAccessibilitySettings: (() -> Unit)? = null
 
     private fun addCard(): MaterialCardView {
@@ -69,7 +69,7 @@ class StatusCards(
         return binding.root
     }
 
-    /** 刷新三张卡片的状态显示。 */
+    /** Refresh the status display of the three cards. */
     fun refresh() {
         checkShizuku()
         checkXposed()
@@ -117,8 +117,8 @@ class StatusCards(
     }
 
     /**
-     * 无障碍卡片：始终显示，仅随状态变色/变文案。
-     * 原首页里它在已开启时会被隐藏（visibility=GONE），迁移后保持常驻。
+     * Accessibility card: always shown, only changes color/text with status.
+     * In the original home page it was hidden (visibility=GONE) when enabled; after migration it stays.
      */
     private fun refreshAccessibility() {
         val card = accessibilityCard ?: return
@@ -158,8 +158,9 @@ class StatusCards(
     )
 
     /**
-     * 点卡片只弹介绍与描述（与原来的权限页一致），不弹 Snackbar 那种一闪而过的小条。
-     * 关闭对话框后再刷一次状态，便于激活完 Shizuku 直接看到卡片变色。
+     * Tapping a card only shows an intro dialog with description (matching the original permission page),
+     * not a fleeting Snackbar. After the dialog dismisses we refresh status so the card color updates
+     * immediately once Shizuku is activated.
      */
     override fun onClick(v: View) {
         when (v.id) {
@@ -170,7 +171,7 @@ class StatusCards(
                 )
             }
             R.id.status_card_shizuku -> {
-                //点一下顺带重连 binder，然后把介绍和当前状态写在对话框里
+                // Tapping also reconnects the binder, then the dialog shows intro + current status
                 MiFreeform.me?.initShizuku()
                 val running = MiFreeform.me?.isRunning?.value == true
                 showIntroDialog(
@@ -187,14 +188,14 @@ class StatusCards(
                     setTitle(fragment.getString(R.string.accessibility_card_title))
                     setMessage(fragment.getString(R.string.home_accessibility_warn_message))
                     if (enabled) {
-                        // 已开启时只提示，不再跳转
+                        // When already enabled, just show a hint; no navigation
                         setPositiveButton(fragment.getString(R.string.done)) { _, _ -> }
                     } else {
                         setPositiveButton(fragment.getString(R.string.go_to_start_accessibility)) { _, _ ->
                             onGoToAccessibilitySettings?.invoke()
                         }
                         setNegativeButton(fragment.getString(R.string.go_to_change_service_type)) { _, _ ->
-                            // 首页已删除，改为跳到设置页的「保活方式」条目
+                            // The home page was removed; now navigate to the "Keep-alive method" item in settings
                             (fragment as? SettingFragment)?.scrollToServiceType()
                         }
                     }

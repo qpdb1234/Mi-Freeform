@@ -9,8 +9,8 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 class HookMyself : IXposedHookLoadPackage {
     override fun handleLoadPackage(p0: XC_LoadPackage.LoadPackageParam) {
-        // 与 applicationId 保持一致：用 BuildConfig 而不是写死字符串，
-        // 否则改了包名并存安装时这里永远匹配不上，Xposed 自检会一直失败。
+        // Keep it in sync with applicationId: use BuildConfig instead of a hardcoded string,
+        // otherwise after a package-name change this never matches and the Xposed self-check always fails.
         if (p0.packageName == com.moonlight.freeform.BuildConfig.APPLICATION_ID) {
 //            XposedHelpers.findAndHookMethod(
 //                "com.moonlight.freeform.ui.permission.PermissionActivity",

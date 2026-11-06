@@ -48,7 +48,7 @@ class CircleImageView @JvmOverloads constructor(
         }
     }
 
-    //设置圆角图片
+    //Apply the rounded-corner image
     private fun setRound(radius: Int) = apply {
         val isChange = radius != mRadius
         mRadius = radius

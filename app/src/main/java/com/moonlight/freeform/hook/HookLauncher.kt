@@ -31,7 +31,7 @@ class HookLauncher : IXposedHookLoadPackage {
         }
     }
 
-    //优化 多任务打开米窗的方式更改为点击应用图标后发现
+    //Optimization: the way to open Mi-Freeform from Recents changed to "after tapping the app icon"
     private fun hookLauncherAfterQ(classLoader: ClassLoader) {
         val taskMenuViewClass = XposedHelpers.findClass("com.android.quickstep.views.TaskMenuView", classLoader)
 
@@ -61,16 +61,16 @@ class HookLauncher : IXposedHookLoadPackage {
             val topComponent = XposedHelpers.callMethod(taskObj, "getTopComponent") as ComponentName
 
             menuOptionView.setOnClickListener {
-                // 广播 action 与接收方所在包都取自 BuildConfig：
-                // 不能写死字符串，否则改包名后会发到错误的包去。
+                // Both the broadcast action and the receiving package come from BuildConfig:
+                // they must not be hardcoded, otherwise after a package-name change it goes to the wrong package.
                 //
-                // 必须写显式组件，不能只靠 setPackage：
-                // 隐式广播（只有 action + setPackage）在 Android 8 以后**不会**投给 manifest
-                // 里静态声明的接收器，实测连 --include-stopped-packages 也救不回来。
-                // 于是「进程还活着」时它靠 ForegroundService 运行时注册的那个接收器才生效，
-                // 进程一旦被划掉/force-stop，最近任务里点米窗就是彻底静默无反应（实测：
-                // 零进程、零窗口、零日志）。改成显式组件后同一发广播能把进程从零拉起来。
-                // 类名用 StartFreeformReceiver::class.java.name，这样重命名 Java 包时不会指错。
+                // An explicit component is required; setPackage alone is not enough:
+                // an implicit broadcast (action + setPackage only) is **not** delivered after Android 8 to receivers
+                // statically declared in the manifest, and even --include-stopped-packages does not save it in practice.
+                // So while "the process is still alive" it only worked via the receiver ForegroundService registers at runtime,
+                // and once the process was swiped away / force-stopped, tapping Mi-Freeform in Recents was completely silent
+                // (measured: zero process, zero window, zero log). Switching to an explicit component lets the same broadcast
+                // pull the process up from scratch. The class name uses StartFreeformReceiver::class.java.name so a Java package rename won't point to the wrong place.
                 val intent = Intent("${MiFreeform.PACKAGE_NAME}.start_freeform").apply {
                     component = ComponentName(
                         MiFreeform.PACKAGE_NAME,

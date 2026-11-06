@@ -161,7 +161,7 @@ class SecondFragment : Fragment() {
                 freeformStudyView?.setGuideSuccess()
             }
 
-            //借该回调用于首次设置可以移动
+            // Reusing this callback to enable moving on first setup
             override fun onSuccess() {
                 freeformStudyView?.setCanMove()
             }
@@ -175,7 +175,7 @@ class SecondFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
-        //Android Q以下系统，当界面有悬浮窗时，会调用onPause，所以不应该再此处调用destroy。q220910.3
+        //On systems below Android Q, when there is an overlay window, onPause is called, so destroy should not be invoked here. q220910.3
 //        freeformStudyView?.destroy()
 //        callback = null
 //        binding.buttonStepB.isEnabled = true

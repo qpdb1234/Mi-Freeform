@@ -13,11 +13,11 @@ import com.moonlight.freeform.service.KeepAliveService
 import com.moonlight.freeform.utils.PermissionUtils
 
 /**
- * 通过活动打开应用选择
+ * Open the app chooser via an activity.
  */
 class FloatingActivity : AppCompatActivity() {
 
-    //应用内语言切换：按设置包裹基础 Context（见 LocaleHelper）
+    //In-app language switch: wrap the base Context per the saved setting (see LocaleHelper)
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.moonlight.freeform.utils.LocaleHelper.wrap(newBase))
     }
@@ -35,20 +35,20 @@ class FloatingActivity : AppCompatActivity() {
                 }
             }
             ForegroundService.SERVICE_TYPE -> {
-                // 把「打开侧边栏」直接投给服务的 onStartCommand，而不是先写 to_show_floating 再查服务在不在。
-                // 旧写法在这里有个必输的竞态：startForegroundService 是异步的，紧跟其后那一次
-                // ServiceUtils.isServiceWork 读到的必然还是 false（服务的 onCreate 都还没跑到），
-                // 于是进程冷启动后的第一次点击只会弹一句「请确保前台服务在运行」，第二次才有效。
-                // 复用常驻通知同一条 ACTION_TOGGLE_FLOATING 通道之后，服务无论是已在运行、
-                // 还是正被这次调用拉起来，都会在 onStartCommand 里收到同一个动作，不需要任何存活探测。
+                // Send "open the sidebar" straight to the service's onStartCommand, instead of first writing to_show_floating and then probing whether the service is up.
+                // The old approach had a guaranteed race here: startForegroundService is asynchronous, so the very next
+                // ServiceUtils.isServiceWork call still reads false (the service's onCreate hasn't even run yet),
+                // so the first click after a cold process start only pops a "make sure the foreground service is running" toast, and only the second click works.
+                // Once we reuse the persistent notification's ACTION_TOGGLE_FLOATING channel, the service receives the same
+                // action in onStartCommand whether it is already running or is being brought up by this very call, so no liveness probe is needed.
                 try {
                     startForegroundService(
                         Intent(this, ForegroundService::class.java)
                             .setAction(ForegroundService.ACTION_TOGGLE_FLOATING)
                     )
                 } catch (e: Exception) {
-                    // 前台服务起不来（后台启动限制等）才退回提示；这条路径必须留痕，
-                    // 否则用户看到的仍然是「点了没反应」。
+                    // Only fall back to a prompt when the foreground service cannot start (background-start limits, etc.); this path must leave a trace,
+                    // otherwise the user still just sees "nothing happens when I tap".
                     Log.w(TAG, "start_foreground_service_failed", e)
                     Toast.makeText(this, getString(R.string.require_foreground), Toast.LENGTH_SHORT).show()
                 }

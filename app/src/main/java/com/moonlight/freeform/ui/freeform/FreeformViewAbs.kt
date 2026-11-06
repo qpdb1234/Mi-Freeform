@@ -6,10 +6,10 @@ abstract class FreeformViewAbs(open val config: FreeformConfig) {
     abstract fun fromBackstage()
 
     /**
-     * 彻底销毁小窗（释放虚拟屏、移除窗口、清理管理集合）。
+     * Fully destroy the freeform window (release the virtual display, remove the window, clean up the bookkeeping collections).
      *
-     * 用于「同一应用再次启动小窗」时清掉旧的实例，
-     * 避免出现两个小窗或残留的悬浮球。
+     * Used to drop the previous instance when the same app opens a freeform again,
+     * so that two windows or a leftover floating ball are never left behind.
      */
     abstract fun destroyFreeform()
 }

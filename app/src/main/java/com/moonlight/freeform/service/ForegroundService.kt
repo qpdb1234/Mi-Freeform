@@ -36,7 +36,7 @@ import kotlin.math.roundToInt
 
 class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeListener, View.OnTouchListener, GestureDetector.OnGestureListener, ChooseAppFloatingView.OnWindowRemoveCallback {
 
-    //应用内语言切换：切换语言时 SettingFragment 会重启本服务，重新走这里拿到新语言
+    //In-app language switch: when the language changes, SettingFragment restarts this service so it re-runs here and picks up the new language
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.moonlight.freeform.utils.LocaleHelper.wrap(newBase))
     }
@@ -45,57 +45,57 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
 
     private val scope = MainScope()
 
-    //是否正在展示悬浮按钮
+    //Whether the floating button is currently shown
     private var isShowingFloating = false
-    //是否正在展示选择应用
+    //Whether the app picker is currently shown
     private var isShowingChooseApp = false
-    //常驻通知是否已经挂上。挂过一次就不用每次 onStartCommand 都重建（点通知也是 onStartCommand）。
+    //Whether the ongoing notification has been posted. Once posted, no need to rebuild it on every onStartCommand (tapping the notification is also onStartCommand).
     private var notificationPosted = false
 
-    //窗口管理器
+    //Window manager
     private lateinit var windowManager: WindowManager
     private lateinit var windowLayoutParams: WindowManager.LayoutParams
 
-    //悬浮按钮配置
+    //Floating-button config
     private lateinit var config: FloatingConfig
 
-    //屏幕宽高
+    //Screen width/height
     private var screenWidth: Int = 0
     private var screenHeight: Int = 0
-    //上一次用来换算 dp 的显示密度。MIUI 的「显示大小」只会改密度不改像素尺寸，
-    //单看 screenWidth/screenHeight 察觉不到，必须单独记住。
+    //The display density used last time for dp conversion. MIUI's "Display size" only changes density, not pixel size,
+    //which screenWidth/screenHeight alone can't detect, so we must track it separately.
     private var cachedDensityDpi = 0
 
-    //物理屏幕方向，1竖屏，2横屏
+    //Physical screen orientation, 1 portrait, 2 landscape
     private var screenRotation: Int = 0
-    //通过shizuku服务获得的物理屏幕方向，0 1 2 3分别代表四个方向
+    //Physical screen orientation obtained via the Shizuku service; 0 1 2 3 represent the four directions
     private var displayRotation = Surface.ROTATION_0
 
-    //shizuku获取到的监听屏幕方向的服务
+    //The service obtained via Shizuku that watches screen orientation
     private lateinit var iWindowManager: IWindowManager
     private lateinit var rotationWatcher: IRotationWatcher
-    //旋转监听是否已经注册到 IWindowManager。未注册时销毁流程里不能去反注册。
+    //Whether the rotation watcher is registered to IWindowManager. When not registered, the destroy flow must not try to unregister it.
     private var rotationWatcherRegistered = false
 
     private lateinit var gestureDetector: GestureDetector
 
-    //悬浮按钮界面
+    //The floating-button UI
     private lateinit var floatView: View
 
-    //应用选择悬浮界面
+    //The app-picker floating UI
     private lateinit var chooseAppFloatingView: ChooseAppFloatingView
 
-    //触摸模式，标记是点击还是长按
+    //Touch mode, marks whether it's a tap or a long press
     private var touchMode = 0
 
     private lateinit var displayManager: DisplayManager
 
     private var startFreeformReceiver = StartFreeformReceiver()
 
-    //获取默认屏幕
+    //The default display
     private lateinit var defaultDisplay: Display
 
-    //屏幕监听
+    //Screen listener
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {
 
@@ -105,27 +105,27 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         }
 
         /*
-            20221208 屏幕旋转可以分为两种
-            1.主动旋转，即手动将设备旋转。此时defaultDisplay.rotation是可以正确的反应屏幕方向的
-            2.被动旋转，比如在竖屏状态下打开一个视频，或者在竖屏状态下打开横屏游戏，此时defaultDisplay.rotation无法反应正确的屏幕方向
-            原因：Display#rotation反应的不是真实的方向，比如平板，就是横着是ROTATION_0
+            20221208 screen rotation comes in two kinds
+            1.Active rotation, i.e. manually rotating the device. Here defaultDisplay.rotation correctly reflects the screen orientation
+            2.Passive rotation, e.g. opening a video in portrait, or opening a landscape game in portrait; here defaultDisplay.rotation can't reflect the true orientation
+            Reason: Display#rotation doesn't reflect the real orientation—for a tablet, lying sideways is already ROTATION_0
          */
         override fun onDisplayChanged(displayId: Int) {
             if (displayId == Display.DEFAULT_DISPLAY) {
-                // 分辨率/显示大小改变（MIUI「显示大小」「屏幕分辨率」、折叠屏展开）不会走旋转回调，
-                // 只有这里能拿到新尺寸。不重算的话 screenWidth 与已建好的窗口像素都停在旧值，
-                // 设置页显示的 dp 与实际粗细就对不上了。
-                // 注意这个回调可能早于本进程 resources 更新，读到的是旧密度而白跑一次；
-                // 真正的兜底是下面的 onConfigurationChanged。
+                // Resolution/display-size changes (MIUI "Display size" / "Screen resolution", foldable unfold) don't go through the rotation callback,
+                // so only here can we get the new size. If we don't recompute, screenWidth and the already-built window pixels stay at old values,
+                // and the dp shown in the settings page would no longer match the actual thickness.
+                // Note this callback may arrive before this process's resources update, reading the old density and doing a wasted pass;
+                // the real fallback is onConfigurationChanged below.
                 scope.launch(Dispatchers.Main) { refreshDisplayGeometry() }
             }
         }
     }
 
-    // MIUI「显示大小」只改密度、「屏幕分辨率」只改尺寸，都不伴随旋转，所以 rotationWatcher 那条路不走。
-    // 实测（模拟器 wm density 440->320）DisplayListener 的回调到达时进程 resources 还是旧值，把手像素不变；
-    // onConfigurationChanged 是系统把新配置刷进本进程之后才回调的，这里才是拿到新密度的可靠时机。
-    // Service 不像 Activity 有 configChanges 声明，配置一变必定回调，直接在主线程执行。
+    // MIUI's "Display size" only changes density and "Screen resolution" only changes size, neither accompanied by rotation, so the rotationWatcher path doesn't fire.
+    // Measured (emulator wm density 440->320): when the DisplayListener callback arrives, the process resources still hold old values and the handle pixels don't change;
+    // onConfigurationChanged is called back only after the system flushes the new config into this process, so this is the reliable point to get the new density.
+    // Unlike Activity, a Service has no configChanges declaration, so any config change definitely calls back—run it directly on the main thread.
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         refreshDisplayGeometry()
@@ -141,23 +141,23 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         sp = getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
         sp.registerOnSharedPreferenceChangeListener(this)
         if (sp.getInt("service_type", ForegroundService.SERVICE_TYPE) == SERVICE_TYPE) {
-            // 供 StartFreeformReceiver 判断「进程是不是被广播冷拉起来的」；见该文件注释。
+            // Lets StartFreeformReceiver decide "was the process cold-started by a broadcast"; see that file's comment.
             instance = this
-            // 与 HookLauncher 的发送方同源（见该文件注释），否则桌面发的广播收不到。
+            // Same source as HookLauncher's sender (see that file's comment), otherwise broadcasts sent by the launcher won't be received.
             registerReceiver(
                 startFreeformReceiver,
                 IntentFilter("${MiFreeform.PACKAGE_NAME}.start_freeform")
             )
 
-            //q221208.1 修复屏幕旋转后侧边栏不贴边的问题
-            // rotationWatcher 本身不依赖 Shizuku，先建好；把它注册到 IWindowManager
-            // 必须等 Shizuku 的 binder 到位，见下面 initRotationWatcher。
+            //q221208.1 fix the sidebar not hugging the edge after screen rotation
+            // rotationWatcher itself doesn't depend on Shizuku, so build it first; registering it to IWindowManager
+            // must wait for Shizuku's binder to arrive, see initRotationWatcher below.
             rotationWatcher = object : IRotationWatcher.Stub() {
                 override fun onRotationChanged(rotation: Int) {
                     scope.launch(Dispatchers.Main) {
                         displayRotation = rotation
 
-                        //q220902.3 如果程序崩溃的话，那么resources.configuration.orientation获取到的方向是错误的，所以不应该用该方法
+                        //q220902.3 if the app crashes, the orientation from resources.configuration.orientation is wrong, so we shouldn't use that method
                         val tempScreenRotation = if (displayRotation == Surface.ROTATION_0 || displayRotation == Surface.ROTATION_180) {
                             Configuration.ORIENTATION_PORTRAIT
                         } else {
@@ -188,8 +188,8 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
                 }
             }
             if (!initRotationWatcher()) {
-                // 服务启动时 Shizuku 的 binder 可能还没到，这时直接调 IWindowManager 会抛
-                // IllegalStateException: binder haven't been received，把进程带崩。改成等 binder 到达后再注册。
+                // When the service starts, Shizuku's binder may not have arrived; calling IWindowManager directly then throws
+                // IllegalStateException: binder haven't been received, crashing the process. Changed to register after the binder arrives.
                 Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
             }
 
@@ -209,29 +209,29 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
 
             initConfig()
             chooseAppFloatingView = ChooseAppFloatingView(this, config.positionX, this)
-            // 提前把侧边栏面板要的数据在后台取好：不然用户第一次点通知/把手时，
-            // Room 首查 + queryIntentActivities 全卡在点击到面板出现之间。
+            // Fetch the sidebar panel's data ahead on background: otherwise on the user's first notification/handle tap,
+            // the Room first query + queryIntentActivities all get stuck between the tap and the panel appearing.
             chooseAppFloatingView.prewarm()
         } else {
-            //如果不是前台服务模式，则关闭服务
+            //If not in foreground-service mode, stop the service
             stopSelf()
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // onCreate 里判定「不是前台服务模式」时会直接 stopSelf，那一整分支的 lateinit 成员
-        // （chooseAppFloatingView / windowManager / gestureDetector …）都不会被赋值。
-        // 此时如果继续往下建通知、处理 ACTION_TOGGLE_FLOATING，就会抛
-        // UninitializedPropertyAccessException 把服务进程带崩（用户侧表现为「点常驻通知闪退」），
-        // 所以这里以 chooseAppFloatingView 是否就绪为准提前返回，并告诉系统不必重启本服务。
+        // When onCreate decides "not foreground-service mode" it calls stopSelf directly, and that whole branch's lateinit members
+        // (chooseAppFloatingView / windowManager / gestureDetector …) never get assigned.
+        // If we then continued to build the notification and handle ACTION_TOGGLE_FLOATING, it would throw
+        // UninitializedPropertyAccessException and crash the service process (user-side: "tapping the ongoing notification force-closes"),
+        // so here we return early based on whether chooseAppFloatingView is ready, and tell the system not to restart this service.
         if (!::chooseAppFloatingView.isInitialized) {
             Log.w(TAG, "onStartCommand skipped: service is not in foreground mode")
             return START_NOT_STICKY
         }
 
-        //通知被点击（携带 ACTION_TOGGLE_FLOATING）时直接打开应用选择浮层，绕过 Activity 中转。
-        //这一步必须排在通知重建之前：下面那段要建通知渠道、解码大图标、再走一次 startForeground，
-        //都是主线程上的活，排在后面的话面板就得排队等它干完才出现（用户看到的延迟）。
+        //When the notification is tapped (carrying ACTION_TOGGLE_FLOATING), open the app-picker overlay directly, bypassing the Activity relay.
+        //This step must come before rebuilding the notification: the block below creates the channel, decodes the large icon, and runs startForeground again—
+        //all main-thread work, so if it ran first the panel would have to queue behind it (the delay the user sees).
         if (intent?.action == ACTION_TOGGLE_FLOATING) {
             openChooseAppFromEntry()
         }
@@ -242,15 +242,15 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
     }
 
     /**
-     * 挂上常驻通知。只在本实例真的挂过一次之后就不再重复：
-     * 渠道创建 + 解码 ic_launcher 位图 + startForeground 都有开销，
-     * 以前每次 onStartCommand（也就是用户每次点通知）都要重做一遍。
+     * Posts the ongoing notification. Runs only once per instance, never again after it's really been posted:
+     * channel creation + decoding the ic_launcher bitmap + startForeground all cost,
+     * and previously every onStartCommand (i.e. every user tap on the notification) redid it.
      */
     private fun postForegroundNotification() {
         if (notificationPosted) return
 
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        //创建通知渠道
+        //Create the notification channel
         val channel = NotificationChannel(
             CHANNEL_ID,
                 getString(R.string.foreground_notification_name),
@@ -261,20 +261,20 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.foreground_notification_text), null))
         notificationPosted = true
 
-        // 把最近一次失败体现到这条常驻通知上。Shizuku 没绑上、虚拟屏建不起来这类
-        // 「点了没反应」的情况，以前只有一闪而过的 Toast，用户回头根本无从查起。
+        // Surface the latest failure on this ongoing notification. Cases like "Shizuku not bound" or "virtual display can't be built"—
+        // "tap does nothing"—previously only had a fleeting Toast, so users had no way to investigate afterward.
         DiagnosticsLog.addListener(diagListener)
         refreshDiagNotification()
     }
 
     /**
-     * 组装常驻通知。渠道已存在，这里只做内容；刷新时复用同一个通知 id。
+     * Assembles the ongoing notification. The channel already exists, so this only sets content; refresh reuses the same notification id.
      */
     private fun buildNotification(contentText: String, bigText: String?): Notification {
-        //点击常驻通知直接打开侧边栏的应用选择浮层。
-        //这里用 getService 而不是 getActivity：以前点通知要先拉起 FloatingActivity，
-        //而它会 setContentView + 慢速的 ActivityManager 存活校验后才写 to_show_floating 触发服务，
-        //于是打开侧边栏存在可感知的延迟；现在通知直接把 Intent 投递给本服务的 onStartCommand，无延迟。
+        //Tapping the ongoing notification opens the sidebar's app-picker overlay directly.
+        //Here we use getService rather than getActivity: previously tapping the notification first launched FloatingActivity,
+        //which did setContentView + a slow ActivityManager liveness check before writing to_show_floating to trigger the service,
+        //so opening the sidebar had a perceptible delay; now the notification delivers the Intent straight to this service's onStartCommand, no delay.
         val notificationIntent = Intent(this, ForegroundService::class.java).setAction(ACTION_TOGGLE_FLOATING)
         val pendingIntent = PendingIntent.getService(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
         val builder = Notification.Builder(this.applicationContext,
@@ -289,10 +289,10 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         if (bigText != null) {
             builder.setStyle(Notification.BigTextStyle().bigText(bigText))
         }
-        // 缺悬浮窗权限时多给一个「去授权」按钮。
-        // 为什么由用户点而不是代码直接跳：代码自己跳那一次设置页，在 Android 14 上
-        // 会让本进程之后的所有悬浮窗被系统隐藏（见 PermissionUtils.guideToGrantOverlayPermission），
-        // 而通知按钮是用户主动触发的，点了才跳，不点就不跳。
+        // When the overlay permission is missing, add a "grant" button.
+        // Why let the user tap rather than have code jump directly: code jumping to that settings page itself, on Android 14,
+        // makes the system hide all subsequent overlay windows in this process (see PermissionUtils.guideToGrantOverlayPermission),
+        // whereas the notification button is user-initiated—it jumps only when tapped, not otherwise.
         if (DiagnosticsLog.latest(this)?.tag == PermissionUtils.DIAG_TAG_OVERLAY_MISSING) {
             val grantPendingIntent = PendingIntent.getActivity(
                 this,
@@ -314,7 +314,7 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
     private val diagListener = DiagnosticsLog.Listener { refreshDiagNotification() }
 
     /**
-     * 用最新的诊断记录刷新常驻通知；没有记录时保持默认文案。
+     * Refreshes the ongoing notification with the latest diagnostic record; keeps the default text when there's none.
      */
     private fun refreshDiagNotification() {
         if (!notificationPosted) return
@@ -332,9 +332,9 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
     override fun onDestroy() {
         super.onDestroy()
         if (instance === this) instance = null
-        // onCreate 可能只执行了一部分（service_type 不是前台服务时直接 stopSelf，
-        // 或者 Shizuku binder 一直没到），lateinit 成员没初始化就去访问会抛
-        // UninitializedPropertyAccessException，销毁时再崩一次会让服务反复重启。
+        // onCreate may have run only partially (direct stopSelf when service_type isn't foreground,
+        // or the Shizuku binder never arriving); accessing uninitialized lateinit members throws
+        // UninitializedPropertyAccessException, and crashing again during destroy makes the service restart repeatedly.
         if (::displayManager.isInitialized) displayManager.unregisterDisplayListener(displayListener)
         if (isShowingFloating) removeFloating()
         if (::sp.isInitialized) sp.unregisterOnSharedPreferenceChangeListener(this)
@@ -342,8 +342,8 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         try {
             unregisterReceiver(startFreeformReceiver)
         } catch (e: Exception) {
-            // onCreate 中途退出的时候 receiver 根本没注册过，这里报错是预期的；
-            // 但真泄漏注册时也需要能看见，所以记一行不抛。
+            // When onCreate exits midway the receiver was never registered, so erroring here is expected;
+            // but a genuine leaked registration also needs to be visible, so we log a line without throwing.
             Log.d(TAG, "unregister startFreeformReceiver skipped", e)
         }
 
@@ -358,14 +358,14 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
             }
         }
 
-        // 服务销毁：面板的窗口与预搭好的视图树一起丢掉
+        // Service destroyed: discard the panel's window and the pre-built view tree together
         if (::chooseAppFloatingView.isInitialized) chooseAppFloatingView.dispose()
     }
 
     /**
-     * 取 IWindowManager 并把旋转监听注册上去。
+     * Fetches IWindowManager and registers the rotation watcher on it.
      *
-     * @return true = 已注册（含此前已注册）；false = Shizuku binder 还没到或注册失败，调用方需要稍后重试
+     * @return true = registered (including previously registered); false = Shizuku binder not yet arrived or registration failed; the caller must retry later
      */
     private fun initRotationWatcher(): Boolean {
         if (rotationWatcherRegistered) return true
@@ -393,13 +393,13 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
     }
 
     /**
-     * 重新取一次屏幕尺寸/密度，变了就把把手按新几何摆回去。
-     * 调用点有两个（DisplayListener 与 onConfigurationChanged），二者到达顺序与次数都没保证，
-     * 所以先跟上次记的值比，真变了才动手，避免每次配置回调都重建窗口。
+     * Re-fetches screen size/density once; if changed, repositions the handle by the new geometry.
+     * There are two call sites (DisplayListener and onConfigurationChanged), with no guaranteed order or count between them,
+     * so we first compare against the last remembered values and only act on a real change, avoiding rebuilding the window on every config callback.
      */
     private fun refreshDisplayGeometry() {
-        // service_type 不是前台服务模式时 onCreate 会直接 stopSelf，windowManager 等成员根本不会被赋值；
-        // 无障碍模式下本服务也可能在 onCreate 前后收到配置回调。这两种情况下访问空 lateinit 会把进程带崩。
+        // When service_type isn't foreground mode, onCreate calls stopSelf directly and members like windowManager never get assigned;
+        // in accessibility mode this service may also receive config callbacks around onCreate. In both cases accessing a null lateinit crashes the process.
         if (!::windowManager.isInitialized || !::windowLayoutParams.isInitialized) return
 
         val dm = resources.displayMetrics
@@ -407,7 +407,7 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         val newWidth = if (portrait) min(dm.widthPixels, dm.heightPixels) else max(dm.widthPixels, dm.heightPixels)
         val newHeight = if (portrait) max(dm.widthPixels, dm.heightPixels) else min(dm.widthPixels, dm.heightPixels)
         val newRotation = if (portrait) Configuration.ORIENTATION_PORTRAIT else Configuration.ORIENTATION_LANDSCAPE
-        // 用 densityDpi 而不是 density 比较：整数值相等判断是精确的，浮点会因换算路径不同而不一致
+        // Compare by densityDpi rather than density: integer equality is exact, while floats differ depending on the conversion path
         val densityChanged = dm.densityDpi != cachedDensityDpi
         if (newWidth == screenWidth && newHeight == screenHeight && newRotation == screenRotation && !densityChanged) {
             return
@@ -418,10 +418,10 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         val orientationChanged = newRotation != screenRotation
         screenRotation = newRotation
         if (orientationChanged || densityChanged) {
-            // 方向变了要换左右布局；密度变了要重新 inflate（背景圆角这类 dp 资源是在创建视图时换算的，
-            // 只 updateViewLayout 的话窗口尺寸对了、圆角还停在旧密度）。两者都很罕见，重建的闪烁可以接受。
-            // 只在确实显示着的时候移除：浮层已收起时 floatView 可能是从未赋值的 lateinit，
-            // 不能依赖 removeFloating 里的 try/catch 去吞 UninitializedPropertyAccessException。
+            // Orientation change requires switching the left/right layout; density change requires re-inflating (dp resources like background corners are converted at view-creation time,
+            // so only calling updateViewLayout fixes the window size but leaves corners at the old density). Both are rare, and the rebuild flicker is acceptable.
+            // Only remove when actually showing: when the overlay is collapsed, floatView may be an unassigned lateinit,
+            // so we can't rely on removeFloating's try/catch to swallow UninitializedPropertyAccessException.
             if (isShowingFloating) removeFloating()
             initConfig()
             if (orientationChanged) {
@@ -429,7 +429,7 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
                     .onFailure { Log.w(TAG, "notify_panel_rotation_failed", it) }
             }
         } else if (isShowingFloating) {
-            // 只是屏幕尺寸变了（密度没变）：原地改窗口大小与贴边基准即可，不重建、不闪烁。
+            // Only the screen size changed (density unchanged): update window size and edge-alignment in place, no rebuild, no flicker.
             applyFloatingLayout()
         } else {
             initConfig()
@@ -437,7 +437,7 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
     }
 
     /**
-     * 加载配置
+     * Load configuration
      */
     private fun initConfig() {
         config = getFloatingConfig()
@@ -446,19 +446,19 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         }
     }
 
-    // key 必须声明为可空：实测华为 HarmonyOS 在 sp.clear() 时给监听器回调的 key=null（AOSP 是逐 key 通知，
-    // 所以模拟器永远不复现），而 Kotlin 非空参数会在方法入口插入 Intrinsics.checkNotNullParameter，
-    // 在进函数体前就抛 NPE，runCatching 拦不住——真机「恢复默认设置」闪退的根因，已在手机上抓栈确认。
-    // key=null 时 when 不匹配任何分支，后续 setDefaultValues 的逐 key 回调会完成把手重建。
+    // key must be declared nullable: measured on Huawei HarmonyOS, on sp.clear() the listener callback gets key=null (AOSP notifies per key,
+    // so the emulator never reproduces it), while Kotlin's non-null parameter inserts Intrinsics.checkNotNullParameter at the method entry,
+    // throwing NPE before the body runs and runCatching can't intercept it—the root cause of the on-device "restore defaults" crash, confirmed via a captured stack.
+    // When key=null the when matches no branch, and the later per-key callbacks from setDefaultValues finish rebuilding the handle.
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        // 恢复默认设置会一次性 clear+重写大量 key，本回调会被高频触发；
-        // 任一分支抛异常都会带崩共享进程，故整体兜底，单个 key 处理失败不影响其余。
+        // Restoring defaults clears+rewrites many keys at once, so this callback fires at high frequency;
+        // any branch throwing would drag down the shared process, so we guard the whole thing—one key failing shouldn't affect the rest.
         runCatching {
         when(key) {
             "show_floating" -> {
-                // show_floating 为 true 时确保把手在显示（没显示才建），为 false 才移除。
-                // 旧逻辑把「已显示时又收到 show_floating=true」也归到 else→removeFloating，
-                // 而恢复默认设置会重写该 key，导致刚重建好的把手被误删且不再回来。
+                // When show_floating is true ensure the handle is shown (build only if not already), remove only when false.
+                // The old logic grouped "already shown but received show_floating=true" into else→removeFloating,
+                // and restoring defaults rewrites this key, so a just-rebuilt handle would be wrongly removed and never come back.
                 if (getBooleanSp(key, false)) {
                     if (!isShowingFloating && !isShowingChooseApp) initConfig()
                 } else {
@@ -466,19 +466,19 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
                 }
             }
             "floating_position_x" -> {
-                //换边：不销毁重建窗口（重建会走窗口进出动画，视觉上就是闪烁），原地更新位置与侧边距方向；
-                //把手当前没显示时走 initConfig 正常新建。
+                //Switching sides: don't destroy and rebuild the window (rebuilding runs the enter/exit animation, visually a flicker); update position and side-direction in place;
+                //when the handle isn't currently shown, go through initConfig to build it normally.
                 initConfig()
                 chooseAppFloatingView.showPositionX = config.positionX
-                // 面板树是按原来那一侧搭的，换边后要重建才会出现在新的那一侧
+                // The panel tree was built for the original side; after switching it must be rebuilt to appear on the new side
                 chooseAppFloatingView.onSideChanged()
                 if (isShowingFloating) applyFloatingLayout()
             }
-            //Activity/通知传来的打开小窗监听
+            //Listener for opening the small window, sent from the Activity/notification
             "to_show_floating" -> openChooseAppFromEntry()
-            //侧边栏长度/宽度/X轴位置/Y轴位置改变时，原地更新到新尺寸与位置。
-            //不能 remove+add 销毁重建：那会走窗口进出动画，视觉上就是「拖完手/改完设置把手闪一下」；
-            //而且拖动本身已经把窗口移到正确位置，重建纯属多余。
+            //When sidebar length/width/X-axis position/Y-axis position change, update to the new size and position in place.
+            //Must not destroy+rebuild via remove+add: that runs the window enter/exit animation, visually "the handle flickers after dragging/changing settings";
+            //and dragging itself has already moved the window to the right spot, so rebuilding is purely redundant.
             "sidebar_length_dp", "sidebar_width_dp", "sidebar_pos_x_dp", "sidebar_pos_y_dp" -> {
                 if (isShowingFloating) {
                     applyFloatingLayout()
@@ -487,8 +487,8 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
                 }
             }
             "floating_alpha" -> {
-                // 设置项语义是「透明度」：数值越大越透明。存的是 0~10 的透明度，
-                // 换算成 WindowLayoutParams.alpha（0 全透明 ~ 1 不透明）= 1 - 透明度/10。
+                // The setting's semantics are "transparency": larger value = more transparent. Stored as 0~10 transparency,
+                // converted to WindowLayoutParams.alpha (0 fully transparent ~ 1 opaque) = 1 - transparency/10.
                 config.alpha = 1f - getIntSp("floating_alpha", 7) / 10f
                 if (isShowingFloating) {
                     try {
@@ -503,8 +503,8 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
             }
         }
         }.onFailure {
-            // 单个 key 处理失败不该带崩进程，但也不能默默吐掉，
-            // 否则「改了设置没反映」这类问题永远查不到原因。
+            // A single key failing shouldn't crash the process, but we also can't swallow it silently,
+            // otherwise problems like "changed a setting but nothing happened" could never be traced.
             Log.w(TAG, "onSharedPreferenceChanged key=$key handled failed", it)
         }
     }
@@ -522,13 +522,13 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
     }
 
     /**
-     * 从入口（点常驻通知 / to_show_floating）打开应用选择浮层。
-     * 复用「点把手打开浮层」的逻辑；isShowingChooseApp 防止重复打开。
+     * Opens the app-picker overlay from an entry point (tapping the ongoing notification / to_show_floating).
+     * Reuses the "tap the handle to open the overlay" logic; isShowingChooseApp prevents duplicate opens.
      */
     private fun openChooseAppFromEntry() {
         if (!isShowingChooseApp) {
             removeFloating()
-            //修复 可以打开多个选择应用界面的情况 q220909.1
+            //Fix: multiple app-picker windows could be opened q220909.1
             isShowingChooseApp = true
             chooseAppFloatingView.showFloatingView()
         }
@@ -542,21 +542,21 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
 
         root.setOnTouchListener(this)
 
-        //侧边栏尺寸可在设置里调整（dp），这里换算成像素；位置存的是像素偏移 offsetX/offsetY
+        //Sidebar size can be adjusted in settings (dp), converted to pixels here; the position stores pixel offsets offsetX/offsetY
         val density = resources.displayMetrics.density
-        //宽度默认 8dp，与 settings.xml 的 android:defaultValue 一致
+        //Width defaults to 8dp, matching settings.xml's android:defaultValue
         val floatingButtonWidth = (getIntSp("sidebar_width_dp", 8) * density).roundToInt()
         val floatingButtonHeight = (getIntSp("sidebar_length_dp", 64) * density).roundToInt()
 
         if (Settings.canDrawOverlays(this)) {
-            // 恢复默认设置时，服务会收到一连串 SP 变更回调，反复 remove/add overlay 窗口；
-            // 真机上这会瞬时抛异常（view already added / token 失效等），不接住会把服务进程带崩，
-            // 用户看到的就是整个应用“闪退”。这里兜住，最多是把手没显示，不拖垮进程。
+            // When restoring defaults, the service receives a stream of SP-change callbacks, repeatedly remove/adding overlay windows;
+            // on real devices this transiently throws (view already added / token invalid etc.), and not catching it would crash the service process,
+            // which the user sees as the whole app "force-closing". Guard here; worst case the handle isn't shown, without dragging down the process.
             try {
                 windowManager.addView(floatView, windowLayoutParams.apply {
-                    //X：由「离边距」换算成窗口 x，几何细节见 handleWindowX
+                    //X: convert the "edge distance" to window x, see handleWindowX for geometry details
                     x = handleWindowX(config.offsetX, floatingButtonWidth)
-                    //Y：屏幕中心为 0，可上下拖到 ±屏高/2
+                    //Y: screen center is 0, draggable up/down to ±screenHeight/2
                     y = max(screenHeight / -2, min(screenHeight / 2, config.offsetY))
                     width = floatingButtonWidth
                     height = floatingButtonHeight
@@ -574,9 +574,9 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
                 isShowingFloating = false
             }
         } else {
-            // 没权限：一次 addView 都不调，只告知（原因见 PermissionUtils.pickOverlayWindowType）。
-            // 旧写法这里会 Toast 后直接跳系统悬浮窗设置页，而 Android 14 上正是这一跳
-            // 会把本进程之后的所有悬浮窗隐藏掉，授权入口改到常驻通知的「去授权」（见 buildNotification）。
+            // No permission: don't call addView even once, just report (see PermissionUtils.pickOverlayWindowType for why).
+            // The old code would Toast here then jump to the system overlay settings page, and on Android 14 that very jump
+            // hides all subsequent overlay windows in this process; the grant entry moved to the ongoing notification's "grant" button (see buildNotification).
             Log.w(TAG, "handle_start_rejected no_overlay_permission")
             PermissionUtils.guideToGrantOverlayPermission(this, getString(R.string.scene_handle))
         }
@@ -587,16 +587,16 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         try {
             windowManager.removeViewImmediate(floatView)
         } catch (e: Exception) {
-            // 把手窗口没拆掉就会变成僵尸窗口（看不见但仍占 surface），必须出声。
+            // If the handle window isn't torn down it becomes a zombie window (invisible but still occupying a surface), so we must log loudly.
             Log.w(TAG, "removeFloating failed (zombie handle window?)", e)
         }
         isShowingFloating = false
     }
 
     /**
-     * 原地更新把手窗口的大小/位置/透明度，不销毁重建窗口（避免闪烁）。
-     * 把手胶囊铺满整个窗口（布局里不留外边距），所以窗口贴边 == 可见部分贴边，
-     * X 轴位置=0 就是真正的屏幕边缘；左右两侧几何一致，换边只看 positionX 的正负。
+     * Updates the handle window's size/position/alpha in place, without destroying and rebuilding (to avoid flicker).
+     * The handle capsule fills the whole window (no outer margin in the layout), so window-edge-aligned == visible-part-aligned,
+     * and X-axis position = 0 is the true screen edge; left/right geometry is symmetric, switching sides only depends on positionX's sign.
      */
     private fun applyFloatingLayout() {
         val density = resources.displayMetrics.density
@@ -618,11 +618,11 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
     }
 
     /**
-     * 「离边距 inset」-> 窗口 x。overlay 窗口没设 gravity，系统按屏幕中心摆放，
-     * 实测 frame.left = (screenWidth - width) / 2 + x，所以先算想要的绝对左边缘、再减去这个居中基准。
-     * 不能写成 positionX * ((screenWidth - width) / 2 - inset)：整数除法在奇数像素宽度下少 1，
-     * 右侧那个基准又会被乘两次，于是 4dp(11px) 这类宽度在屏幕边留下 1px 缝，看着就像宽度不对。
-     * positionX 只有 -1 表示左侧，其余（1 右侧、以及旧数据里的异常值）都按右侧处理。
+     * "edge inset" -> window x. The overlay window sets no gravity, so the system places it at the screen center;
+     * measured frame.left = (screenWidth - width) / 2 + x, so first compute the desired absolute left edge, then subtract this centering baseline.
+     * Must not write positionX * ((screenWidth - width) / 2 - inset): integer division is 1 short at odd pixel widths,
+     * and the right-side baseline gets multiplied twice, leaving a 1px gap at the screen edge for widths like 4dp(11px), which looks like a wrong width.
+     * positionX only uses -1 for the left side; everything else (1 for right, and anomalous values in old data) is treated as the right side.
      */
     private fun handleWindowX(inset: Int, width: Int): Int {
         val maxInset = (screenWidth - width) / 2
@@ -634,27 +634,27 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         val density = resources.displayMetrics.density
         return FloatingConfig(
             getIntSp("floating_position_x", 1),
-            //dp -> 像素：Y 轴偏移（屏幕中心为 0，可为负）、X 轴离边缘的偏移
+            //dp -> pixels: Y-axis offset (screen center is 0, may be negative), X-axis distance from the edge
             (getIntSp("sidebar_pos_y_dp", 0) * density).roundToInt(),
             (getIntSp("sidebar_pos_x_dp", 0) * density).roundToInt(),
-            //设置项语义是「透明度」（0~10，越大越透明），换算成 alpha = 1 - 透明度/10
+            //The setting's semantics are "transparency" (0~10, larger = more transparent), converted to alpha = 1 - transparency/10
             1f - getIntSp("floating_alpha", 7) / 10f
         )
     }
 
     private fun handleMove(dx: Float, dy: Float) {
-        //锁定后对应轴不参与拖动：X 锁定时不改变离边距 offsetX，Y 锁定时不改变 offsetY
+        //When locked, the corresponding axis doesn't participate in dragging: while X is locked offsetX is unchanged, while Y is locked offsetY is unchanged
         val lockX = getBooleanSp("sidebar_lock_x", true)
         val lockY = getBooleanSp("sidebar_lock_y", false)
         if (!lockX) {
-            //X 只能向外拉：离边距 0 ~ (screenWidth - width)/2。dx 向右为正，右侧(positionX=1)向右即离边更远，
-            //左侧(positionX=-1)向右即贴边，故用 positionX 换算符号。
+            //X can only be pulled outward: inset 0 ~ (screenWidth - width)/2. dx is positive rightward; on the right (positionX=1) rightward means farther from the edge,
+            //on the left (positionX=-1) rightward means toward the edge, so use positionX to flip the sign.
             val maxInset = (screenWidth - windowLayoutParams.width) / 2
             config.offsetX = max(0, min(maxInset, config.offsetX - (dx * config.positionX).roundToInt()))
         }
         if (!lockY) {
-            //Y 的可拖范围跟着把手长度收窄：超过 (screenHeight - height)/2 后窗口会被系统卡在应用区
-            //上下沿，再拖画面不动却会把偏移写大（设置页的滑条表示不了那个值），所以按可见范围夹住。
+            //Y's draggable range narrows with the handle length: past (screenHeight - height)/2 the window gets clamped by the system at the
+            //app area's top/bottom edges, and further dragging leaves the screen still but grows the offset (which the settings slider can't represent), so clamp to the visible range.
             val halfY = (screenHeight - windowLayoutParams.height) / 2
             config.offsetY = max(-halfY, min(halfY, config.offsetY + dy.roundToInt()))
         }
@@ -669,7 +669,7 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         )
     }
 
-    //按下时的坐标
+    //Coordinates at press time
     private var lastX = -1f
     private var lastY = -1f
     @SuppressLint("ClickableViewAccessibility")
@@ -691,7 +691,7 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
             }
             MotionEvent.ACTION_UP -> {
                 if (touchMode == SCROLL) {
-                    //把手像素偏移换算成 dp 存回，供设置里的位置 SeekBar 反映；锁定的轴不落库，保持锁定值
+                    //Convert the handle's pixel offset back to dp for storage, so the position SeekBar in settings reflects it; locked axes aren't persisted, keeping the locked value
                     val density = resources.displayMetrics.density
                     if (!getBooleanSp("sidebar_lock_x", true)) setIntSp("sidebar_pos_x_dp", (config.offsetX / density).roundToInt())
                     if (!getBooleanSp("sidebar_lock_y", false)) setIntSp("sidebar_pos_y_dp", (config.offsetY / density).roundToInt())
@@ -751,18 +751,18 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
         private const val TAG = "ForegroundService"
         private const val SCROLL = 1
         private const val CHANNEL_ID = "CHANNEL_ID_SUNSHINE_FREEFORM_FOREGROUND"
-        // 常驻通知的 id。以前直接写成字面量 3，刷新诊断内容时容易和 startForeground 的 id 对不上。
+        // The ongoing notification's id. Previously written as the literal 3, so refreshing diagnostic content could mismatch startForeground's id.
         private const val NOTIFICATION_ID = 3
         const val SERVICE_TYPE = 1
-        //常驻通知点击后回投给本服务的 action：直接打开侧边栏，不走 Activity 中转（去延迟）
+        //action re-posted to this service after the ongoing notification is tapped: open the sidebar directly, no Activity relay (removes delay)
         const val ACTION_TOGGLE_FLOATING = "com.moonlight.freeform.action.TOGGLE_FLOATING"
-        // 「去授权」按钮的 PendingIntent 请求码：与上面那个（requestCode 0 的 getService）分开，
-        // 否则两个 PendingIntent 会相互覆盖（同一个 id 只保留最后创建的那个）。
+        // The "grant" button's PendingIntent request code: kept separate from the one above (the getService with requestCode 0),
+        // otherwise the two PendingIntents would overwrite each other (only the last-created one for a given id is kept).
         private const val REQUEST_CODE_GRANT_OVERLAY = 11
 
         /**
-         * 当前活着的前台服务实例。只在 onCreate 判定「确实是前台服务模式」之后赋值，
-         * 所以它表示的是「把手/侧边栏那套东西已经建起来了」，而不是「Service 对象存在」。
+         * The currently alive foreground-service instance. Assigned only after onCreate confirms "this really is foreground-service mode",
+         * so it means "the handle/sidebar machinery has been built up", not merely "a Service object exists".
          */
         @Volatile
         private var instance: ForegroundService? = null
@@ -771,16 +771,16 @@ class ForegroundService : Service(), SharedPreferences.OnSharedPreferenceChangeL
     }
 
     /**
-     * 悬浮按钮配置类
+     * Floating-button configuration class
      */
     data class FloatingConfig(
-        //垂直按钮横坐标，-1左，1右
+        //Vertical button's x-coordinate, -1 left, 1 right
         var positionX: Int,
-        //Y 轴像素偏移，屏幕中心为 0，可上下拖到 ±屏高/2
+        //Y-axis pixel offset, screen center is 0, draggable up/down to ±screenHeight/2
         var offsetY: Int,
-        //X 轴像素偏移，离边缘的距离，只能向外拖 0 ~ (屏宽-宽)/2
+        //X-axis pixel offset, distance from the edge, draggable outward only 0 ~ (screenWidth-width)/2
         var offsetX: Int,
-        //侧边栏透明度
+        //Sidebar transparency
         var alpha: Float
     )
 }

@@ -64,8 +64,8 @@ class AllAppsAdapter(
             holder.click.setOnClickListener {
                 val userId = UserHandle.getUserId(allAppsList[position].user, allAppsList[position].applicationInfo.uid)
 
-                // 同一应用如果已有小窗（前台或已收起），先彻底清掉旧实例，
-                // 否则会出现两个小窗、或留下点不动也没画面的孤儿球。
+                // If the same app already has a freeform (foreground or collapsed), fully destroy the old instance first,
+                // otherwise you get two freeforms, or an orphan ball that neither responds to taps nor shows any content.
                 FreeformHelper.destroyExistingFreeform(packageName, userId)
 
                 FreeformView(

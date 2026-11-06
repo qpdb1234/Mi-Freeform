@@ -10,7 +10,7 @@ import android.util.Log
 object UserHandle {
 
     /**
-     * 通过uid获取userId
+     * Resolve userId from uid
      */
     fun getUserId(userHandle: UserHandle, uid: Int): Int {
         return try {

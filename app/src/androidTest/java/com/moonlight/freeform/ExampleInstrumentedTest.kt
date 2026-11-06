@@ -19,8 +19,8 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        // 包名取 BuildConfig：applicationId 改过之后，
-        // 这里写死的字符串会让断言一直失败。
+        // Take the package name from BuildConfig: after the applicationId changes,
+        // a hardcoded string here would make the assertion fail forever.
         assertEquals(com.moonlight.freeform.BuildConfig.APPLICATION_ID, appContext.packageName)
     }
 }

@@ -6,31 +6,31 @@ import android.content.Intent
 import android.content.IntentFilter
 
 /**
- * 创建一个监听器类 监听android锁屏与解锁事件
+ * A listener that watches Android screen-off and unlock events.
  */
 class ScreenListener(private val mContext: Context) {
     private val mScreenReceiver: ScreenBroadcastReceiver
     private var mScreenStateListener: ScreenStateListener? = null
 
     /**
-     * screen状态广播接收者
+     * Broadcast receiver for screen state
      */
     private inner class ScreenBroadcastReceiver : BroadcastReceiver() {
         private var action: String? = null
         override fun onReceive(context: Context, intent: Intent) {
             action = intent.action
-            if (Intent.ACTION_SCREEN_ON == action) { // 开屏
+            if (Intent.ACTION_SCREEN_ON == action) { // screen on
                 mScreenStateListener!!.onScreenOn()
-            } else if (Intent.ACTION_SCREEN_OFF == action) { // 锁屏
+            } else if (Intent.ACTION_SCREEN_OFF == action) { // screen off
                 mScreenStateListener!!.onScreenOff()
-            } else if (Intent.ACTION_USER_PRESENT == action) { // 解锁
+            } else if (Intent.ACTION_USER_PRESENT == action) { // unlocked
                 mScreenStateListener!!.onUserPresent()
             }
         }
     }
 
     /**
-     * 开始监听screen状态
+     * Start listening to screen state
      *
      * @param listener
      */
@@ -40,14 +40,14 @@ class ScreenListener(private val mContext: Context) {
     }
 
     /**
-     * 停止screen状态监听
+     * Stop listening to screen state
      */
     fun unregisterListener() {
         mContext.unregisterReceiver(mScreenReceiver)
     }
 
     /**
-     * 启动screen状态广播接收器
+     * Register the screen-state broadcast receiver
      */
     private fun registerListener() {
         val filter = IntentFilter()
@@ -58,7 +58,7 @@ class ScreenListener(private val mContext: Context) {
     }
 
     interface ScreenStateListener {
-        // 返回给调用者屏幕状态信息
+        // Report the screen state back to the caller
         fun onScreenOn()
         fun onScreenOff()
         fun onUserPresent()

@@ -16,7 +16,7 @@ class BootBroadcastReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val sp = context.getSharedPreferences(MiFreeform.APP_SETTINGS_NAME, Context.MODE_PRIVATE)
         if (intent.action == action_boot) {
-            //回退默认改为前台服务（service_type 默认已为前台），未设置时开机也走前台
+            //The fallback default is now the foreground service (service_type already defaults to it); when unset, boot also starts the foreground service
             if (sp.getInt("service_type", ForegroundService.SERVICE_TYPE) == ForegroundService.SERVICE_TYPE)
                 context.startForegroundService(Intent(context, ForegroundService::class.java))
         }

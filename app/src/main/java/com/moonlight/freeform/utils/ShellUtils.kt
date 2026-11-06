@@ -16,16 +16,16 @@ import java.lang.StringBuilder
  * @author Trinea, sunshine0523
  * @date 2013-5-16
  * http://www.trinea.cn
- * 米窗声明：该类部分作者并非米窗，作者信息和源代码地址见上
+ * Mi-Freeform note: this class was not authored by Mi-Freeform; see the author info and source URL above.
  */
 class ShellUtils private constructor() {
 
     class CommandResult(
-        /** 运行结果  */
+        /** Exit result  */
         var result: Int,
-        /** 运行成功结果  */
+        /** Result on success  */
         var successMsg: String?,
-        /** 运行失败结果  */
+        /** Result on failure  */
         var errorMsg: String?
     )
 

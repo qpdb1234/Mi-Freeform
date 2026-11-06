@@ -17,16 +17,16 @@ import com.moonlight.freeform.R
 import kotlin.math.roundToInt
 
 /**
- * 可点击数字输入的设置项滑条。
+ * A settings seek bar whose numeric value can be tapped for direct input.
  *
- * 在 [SeekBarPreference] 基础上做两件事：
- * 1. 右侧的数值文字加一个灰色圆角底，让"数字"看起来像个可点的芯片；
- * 2. 点击数字弹出键盘输入框，按本条的 min/max 校验后写回，省得只能靠拖动一点点调。
+ * On top of [SeekBarPreference] it does two things:
+ * 1. Adds a gray rounded background to the value text on the right, making the "number" look like a tappable chip;
+ * 2. Tapping the number pops a keyboard input box, validated against this item's min/max before writing back, so you don't have to fine-tune only by dragging.
  *
- * min/max 不再自己存一份，而是直接读父类的 [getMin] / [getMax]：设置页会按屏幕尺寸和
- * 把手大小实时重算这两个值，跳动的校验区间和拖动吸附跟着它们走才能保持一致。
- * app:seekStep 是拖动步进（转给父类的 seekBarIncrement，并在松手时做实际吸附），
- * 用于档位数多于轨道像素、中间某些值滑不到的场景。
+ * min/max are no longer stored separately but read directly from the parent's [getMin] / [getMax]: the settings page
+ * recomputes these two values live based on screen size and handle size, so the validation range and drag snapping must follow them to stay consistent.
+ * app:seekStep is the drag step (forwarded to the parent's seekBarIncrement, with actual snapping on release),
+ * useful when there are more steps than track pixels and some intermediate values can't be reached by sliding.
  */
 class NumericSeekBarPreference @JvmOverloads constructor(
     context: Context,
@@ -35,7 +35,7 @@ class NumericSeekBarPreference @JvmOverloads constructor(
     defStyleRes: Int = 0
 ) : SeekBarPreference(context, attrs, defStyleAttr, defStyleRes) {
 
-    // 拖动步进（app:seekStep），<=1 表示不吸附。
+    // Drag step (app:seekStep); <=1 means no snapping.
     private var stepIncrement = 1
 
     init {
@@ -45,8 +45,8 @@ class NumericSeekBarPreference @JvmOverloads constructor(
             step = a.getInt(R.styleable.NumericSeekBarPreference_seekStep, 0)
             a.recycle()
         }
-        // 档位比轨道像素还多时，单个数值只有 1px 的落点，像 Y 轴的 0（屏幕居中）基本滑不到。
-        // seekBarIncrement 只能管住方向键，拖动吸附见 bindStepSnap。
+        // When there are more steps than track pixels, a single value has only a 1px landing point, so values like Y-axis 0 (screen center) are basically unreachable.
+        // seekBarIncrement only governs the arrow keys; drag snapping is handled in bindStepSnap.
         if (step > 1) {
             stepIncrement = step
             seekBarIncrement = step
@@ -65,15 +65,15 @@ class NumericSeekBarPreference @JvmOverloads constructor(
             setPadding(hPad, vPad, hPad, vPad)
             gravity = Gravity.CENTER
         }
-        // 父容器 seekbar_frame 自带 ~16dp 的 paddingEnd，把整行内容右边界卡在 992，
-        // 导致数值芯片比其它设置项的开关（右边缘 1036）靠左一截。清掉这个 paddingEnd，
-        // 让芯片右边缘贴到行右边缘与开关对齐；滑条带 weight 会自动伸缩。
+        // The parent container seekbar_frame has ~16dp paddingEnd, which pins the whole row's right edge at 992,
+        // making the value chip sit left of the switches in other settings items (right edge 1036). Clear this paddingEnd
+        // so the chip's right edge meets the row's right edge and aligns with the switch; the seek bar has weight and shrinks automatically.
         (valueView.parent as? android.view.View)?.let { frame ->
             if (frame.paddingRight != 0) {
                 frame.setPadding(frame.paddingLeft, frame.paddingTop, 0, frame.paddingBottom)
             }
         }
-        // 加 16dp 左边距作为芯片与滑块之间的间隙（滑条会自动缩短让位）。
+        // Add a 16dp start margin as the gap between the chip and the thumb (the seek bar shortens automatically to yield).
         (valueView.layoutParams as? LinearLayout.LayoutParams)?.let { vlp ->
             val gap = (16 * density).toInt()
             if (vlp.marginStart < gap) {
@@ -86,15 +86,15 @@ class NumericSeekBarPreference @JvmOverloads constructor(
     }
 
     /**
-     * 松手后把值吸附到步进的整数倍。平台 SeekBar 的 increment 只作用于按键，拖动过程中
-     * 根本不吸附，所以这里只挂一个不消费事件的触摸监听，等框架写完最终值再修正一次。
+     * After release, snap the value to a multiple of the step. The platform SeekBar's increment only affects key presses;
+     * it doesn't snap during dragging at all, so here we only attach a touch listener that consumes no events and corrects once after the framework writes the final value.
      */
     private fun bindStepSnap(holder: PreferenceViewHolder) {
         if (stepIncrement <= 1) return
         val seekBar = holder.findViewById(androidx.preference.R.id.seekbar) as? SeekBar ?: return
         seekBar.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
-                // post 一下：让框架先在 onStopTrackingTouch 里把拖动结束的值落库，再吸附
+                // post once: let the framework first persist the drag-end value in onStopTrackingTouch, then snap
                 v.post { snapToStep() }
             }
             false
@@ -105,7 +105,7 @@ class NumericSeekBarPreference @JvmOverloads constructor(
         val snapped = ((value.toFloat() / stepIncrement).roundToInt() * stepIncrement)
             .coerceIn(min, max)
         if (snapped != value) {
-            // 交给 SeekBarPreference 落库并刷新滑条与数字显示
+            // Let SeekBarPreference persist it and refresh the seek bar and number display
             value = snapped
         }
     }
@@ -133,7 +133,7 @@ class NumericSeekBarPreference @JvmOverloads constructor(
             .setPositiveButton(R.string.done) { _, _ ->
                 val input = edit.text?.toString()?.toIntOrNull()
                 if (input != null) {
-                    // 按当前（可能是运行时重算过的）区间夹住，再交给 SeekBarPreference 落库
+                    // Clamp to the current (possibly runtime-recomputed) range, then let SeekBarPreference persist it
                     value = input.coerceIn(min, max)
                 }
             }

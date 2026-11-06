@@ -7,21 +7,22 @@ import com.moonlight.freeform.app.MiFreeform
 import java.util.Locale
 
 /**
- * 应用内语言切换（不修改系统语言）。
+ * In-app language switching (does not change the system language).
  *
- * 原理：项目排除 androidx.appcompat、用 rikka 的 1.5.0 分叉，没有
- * AppCompatDelegate.setApplicationLocales；compileSdk 32 也够不到 Android 13
- * 的 per-app locale API。所以采用经典方案：在 Application / 各 Activity / Service
- * 的 attachBaseContext 里按设置值包一层 createConfigurationContext，
- * 之后该上下文里的 getString / inflate 都取对应语言的资源目录
- * （values / values-zh-rCN）。
+ * How it works: the project excludes androidx.appcompat and uses rikka's 1.5.0 fork, so there is
+ * no AppCompatDelegate.setApplicationLocales; compileSdk 32 also cannot reach the Android 13
+ * per-app locale API. So we use the classic approach: in the attachBaseContext of the Application /
+ * each Activity / Service, wrap one layer of createConfigurationContext based on the saved value,
+ * after which getString / inflate in that context resolve resources from the matching language
+ * directory (values / values-zh-rCN).
  *
- * 语言值存在 SharedPreferences（key = app_language），改完只需重建上下文：
- * 设置页切换后由 SettingFragment 触发 recreate + 重启前台服务来生效。
+ * The language value is stored in SharedPreferences (key = app_language); changing it only needs a
+ * context rebuild: after switching on the settings page, SettingFragment triggers recreate + a
+ * restart of the foreground service to take effect.
  */
 object LocaleHelper {
 
-    /** 与 settings.xml 里 app_language 条目、arrays.xml 的 app_language_value 一一对应 */
+    /** One-to-one with the app_language entry in settings.xml and app_language_value in arrays.xml */
     const val KEY = "app_language"
     const val LANGUAGE_SYSTEM = 0
     const val LANGUAGE_ZH_CN = 1
@@ -33,8 +34,8 @@ object LocaleHelper {
     }
 
     /**
-     * 按用户选择的语言包裹 base。选「跟随系统」时原样返回，
-     * 行为与未实现该功能前完全一致。
+     * Wrap base with the user-selected language. When "Follow system" is chosen it returns unchanged,
+     * behaving exactly as before this feature was implemented.
      */
     fun wrap(base: Context): Context {
         val locale = when (getLanguage(base)) {

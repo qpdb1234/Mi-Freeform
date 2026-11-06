@@ -46,7 +46,7 @@ class ChooseAppFloatingView(
     var showPositionX: Int,
     private val removeCallback: OnWindowRemoveCallback
 ){
-    //服务
+    // Services
     private val windowManager: WindowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val displayManager: DisplayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     private val defaultDisplay: Display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
@@ -54,47 +54,47 @@ class ChooseAppFloatingView(
     //scope
     private val scope = MainScope()
 
-    //处理多用户
+    // Handle multi-user
     private val launcherApps: LauncherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
     private val userManager: UserManager = context.getSystemService(Context.USER_SERVICE) as UserManager
     private val userHandleMap = HashMap<Int, UserHandle>()
 
     private val chooseAppFloatingViewModel = ChooseAppFloatingViewModel(context)
 
-    //侧边栏面板的数据缓存。
-    //点常驻通知/点把手都要求「点了立刻出面板」，而 Room 首查 + queryIntentActivities +
-    //逐个包的安装校验串起来是几百毫秒，全压在 addView 之前，用户看到的就是明显的延迟。
-    //所以这些数据一律在后台线程取（服务启动时预热，见 prewarm），点击时只做主线程能秒完成的事。
+    // The sidebar panel's data cache.
+    // Tapping the ongoing notification / handle both require "show the panel instantly on tap", but the Room first query + queryIntentActivities +
+    // per-package install check chained together take hundreds of ms, all pressed before addView, so the user sees an obvious delay.
+    // Hence all this data is fetched on a background thread (prewarmed at service start, see prewarm); tapping only does what the main thread can finish instantly.
     private var cachedApps: ArrayList<FreeFormAppsEntity>? = null
     private var cachedLaunchers: List<ResolveInfo>? = null
-    // 面板每一行的图标/名称/启动Activity，同样在后台算好（key 见 floatingItemKey）
+    // The icon/name/launch-Activity for each panel row, also computed ahead on background (key see floatingItemKey)
     private var cachedItemData: Map<String, FloatingItemData> = HashMap()
-    //正在后台取数据，避免预热与点击两个入口同时发起同一份加载
+    // Fetching data on background, to avoid the prewarm and tap entry points launching the same load simultaneously
     private var isLoadingCache = false
-    //加载期间排上的绑定请求（预热还没跑完就被点开）
+    // Bind requests queued during loading (panel opened before prewarm finished)
     private var pendingBind: ((ArrayList<FreeFormAppsEntity>) -> Unit)? = null
-    //当前面板里的应用列表，缓存刷新后用它原地换数据
+    // The app list currently bound in the panel; used to swap data in place after a cache refresh
     private var appsRecyclerView: RecyclerView? = null
-    //开面板后排队的后台校对任务
+    // Background verification task enqueued after the panel opens
     private var verifyJob: Job? = null
-    //面板窗口是否已经挂在 WindowManager 上
+    // Whether the panel window is already attached to the WindowManager
     private var windowAttached = false
-    //面板里现在绑的是哪一份数据，同样的数据不重绑（重绑会闪）
+    // Which data snapshot is bound in the panel now; the same data isn't rebound (rebinding flickers)
     private var boundApps: List<FreeFormAppsEntity>? = null
 
     private var floatingView: View? = null
     private var floatingViewLayoutParams = WindowManager.LayoutParams()
     private var allAppsView: View? = null
 
-    //物理屏幕方向，1竖屏，2横屏
+    // Physical screen orientation, 1 portrait, 2 landscape
     private var screenRotation = context.resources.configuration.orientation
 
-    //所有应用列表
+    // All-apps list
     private var allAppsList = ArrayList<LauncherActivityInfo>()
-    //使用拼音排序
+    // Sort by pinyin
     private var appsPinyinMap = HashMap<String, String>()
 
-    /** 面板上「全部应用」那一行与编辑入口的点击回调，抽出来复用 */
+    /** Click callback for the panel's "all apps" row and the edit entry, extracted for reuse */
     private val openAllAppsCallback: ClickListener = object : ClickListener() {
         override fun onClick() {
             removeWindow()
@@ -113,47 +113,47 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 服务启动后调一下：把面板要用的数据先在后台取好。
-     * 侧边栏一般是服务起来之后才被点开，这几百毫秒用户在别的地方，感知不到。
+     * Call this after the service starts: fetch the panel's data ahead on background.
+     * The sidebar is usually opened only after the service is up, so during those hundreds of ms the user is elsewhere and won't perceive it.
      */
     fun prewarm() {
         loadCache(null, true)
     }
 
     fun showFloatingView() {
-        // 点了就要有反馈：先把面板挂上去。预热成功时整棵树（包含列表与 adapter）已经搭好，
-        // 这一步只剩一次 addView，中间没有 IO 等待、没有 Room 首查、没有 PackageManager 调用。
+        // Tapping must give feedback: attach the panel first. On a successful prewarm the whole tree (with list and adapter) is already built,
+        // so this step is just one addView, with no IO wait, no Room first query, and no PackageManager call in between.
         addFloatingWindow()
         val apps = cachedApps
         if (apps != null && cachedLaunchers != null) {
-            // 预热时已经绑过了，这里一般什么都不做；没绑过（冷启动）才补一次绑定
+            // Already bound during prewarm; normally nothing to do here; only bind once if never bound (cold start)
             bindAppList(apps)
-            // 缓存可能在应用被卸载/新增后过期，后台校对一次；只有内容真变了才重绑，不会闪。
+            // The cache may be stale after apps are uninstalled/added, so verify once on background; only rebind if content really changed, so it won't flicker.
             scheduleVerify()
         } else {
-            // 冷数据（服务刚启动就被点开，预热还没跑完）：数据到了再填列表。
+            // Cold data (opened right after service start, before prewarm finished): fill the list once data arrives.
             loadCache({ bindAppList(it) }, false)
         }
     }
 
     /**
-     * 数据到位后在主线程把整棵面板树搭好（含列表容器与 adapter）。
-     * 只搭 view，不碰 WindowManager：窗口首帧是系统的开销，提前不了多少，
-     * 但 inflate + 建列表这部分是我们自己的，能提前就提前。
+     * Builds the whole panel tree on the main thread once data is ready (including the list container and adapter).
+     * Only builds views, doesn't touch WindowManager: the window's first frame is a system cost that can't be pulled forward much,
+     * but the inflate + list-creation part is ours, so we advance it whenever possible.
      */
     private fun warmPanelTree() {
         if (floatingView != null) return
         val apps = cachedApps ?: return
-        // 没悬浮窗权限时不预热，那是用户点开时才该发生的事
+        // Without the overlay permission, don't prewarm—that should only happen when the user opens it
         if (!Settings.canDrawOverlays(context)) return
         floatingView = LayoutInflater.from(context).inflate(R.layout.view_choose_app_floating, null, false)
         bindAppList(apps)
     }
 
     /**
-     * 后台校对用的读取很重（Room + 全量 queryIntentActivities + 图标解码），
-     * 正开着面板的第一帧要做的全是主线程的活，这时抢CPU会把面板拖慢。
-     * 所以等第一帧画完、过了动画再说。
+     * The background read is heavy (Room + full queryIntentActivities + icon decode),
+     * while the first frame with the panel open is doing all main-thread work, so contending for CPU then would slow the panel.
+     * So wait until the first frame is drawn and the animation is over.
      */
     private fun scheduleVerify() {
         verifyJob?.cancel()
@@ -164,20 +164,20 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 后台把面板要用的数据取进内存缓存。
+     * Fetches the panel's data into the in-memory cache on background.
      *
-     * @param onLoaded 取到数据后在主线程的回调；只在冷启动路径传，null 表示本次是预热/校对
-     * @param verifyOnly true = 与现有缓存比对，只有列表内容变了才重绑正开着的面板
+     * @param onLoaded main-thread callback once data is ready; passed only on the cold-start path, null means this run is a prewarm/verify
+     * @param verifyOnly true = compare against the existing cache and only rebind the open panel if the list content changed
      */
     private fun loadCache(onLoaded: ((ArrayList<FreeFormAppsEntity>) -> Unit)?, verifyOnly: Boolean) {
         if (isLoadingCache) {
-            // 预热还在跑：冷启动路径必须把回调排上，数据到位时补一次绑定，
-            // 不然用户看到的就是一个永远填不满的空面板。
+            // Prewarm still running: the cold-start path must enqueue the callback so it binds once data arrives,
+            // otherwise the user sees an ever-empty panel.
             if (!verifyOnly && onLoaded != null) pendingBind = onLoaded
             return
         }
         if (!verifyOnly && cachedApps != null) {
-            // 已经有缓存了还走冷路径，说明另一个入口刚把缓存填上；没什么可等的
+            // Cache already exists yet we're on the cold path, meaning another entry just filled it; nothing to wait for
             if (onLoaded != null) onLoaded(cachedApps!!)
             return
         }
@@ -186,7 +186,7 @@ class ChooseAppFloatingView(
             val loaded = runCatching { readAppsAndLaunchers() }.getOrNull()
             isLoadingCache = false
             if (loaded == null) {
-                // 读取失败：冷启动路径下给用户一个空面板也比什么都不填好
+                // Read failed: on the cold-start path, giving the user an empty panel is still better than filling nothing
                 pendingBind = null
                 return@launch
             }
@@ -200,12 +200,12 @@ class ChooseAppFloatingView(
                 if (pending != null) {
                     pending(loaded.first)
                 } else {
-                    // 预热成功：顺手把面板的视图树搭好，点开时就不用再 inflate + 建列表
+                    // Prewarm succeeded: also build the panel's view tree so opening later won't need inflate + list creation
                     warmPanelTree()
                     if (verifyOnly && appsRecyclerView != null && old != null &&
                         !sameAppList(old, loaded.first)
                     ) {
-                        // 面板正开着且列表确实变了（卸载/新增应用），原地换一份数据
+                        // Panel is open and the list really changed (app uninstall/add): swap the data in place
                         bindAppList(loaded.first)
                     }
                 }
@@ -214,15 +214,15 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 只在后台线程调用：读 Room、剔除已卸载的应用、排序、查可启动的 Activity。
-     * 这些全是要花几百毫秒的活，绝不能出现在点击到 addView 之间。
+     * Call only on a background thread: read Room, remove uninstalled apps, sort, query launchable Activities.
+     * All of these take hundreds of ms and must never appear between the tap and addView.
      */
     private suspend fun readAppsAndLaunchers():
             Triple<ArrayList<FreeFormAppsEntity>, List<ResolveInfo>, Map<String, FloatingItemData>> {
         val apps = chooseAppFloatingViewModel.getAllFreeFormApps().first() as ArrayList<FreeFormAppsEntity>?
             ?: ArrayList()
 
-        //删除已经卸载的app
+        // Delete uninstalled apps
         val noInstallAppsList = ArrayList<FreeFormAppsEntity>()
         apps.forEach {
             if (it.userId == 0) {
@@ -248,17 +248,17 @@ class ChooseAppFloatingView(
 
         val launchIntent = Intent(Intent.ACTION_MAIN, null)
         launchIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-        // 全量 queryIntentActivities：本项目的适配器以前在构造器里做这件事，正卡在点击链路上
+        // Full queryIntentActivities: this project's adapter used to do this in its constructor, right on the tap path
         val launchers = context.packageManager.queryIntentActivities(launchIntent, 0)
 
-        // 把面板要显示的每一行的图标、应用名、启动Activity都在这里算好。
-        // 这些活（LauncherApps binder + 图标解码）以前全在 onBindViewHolder 里，
-        // 也就是落在面板首帧的 measure/layout 里：实测7行就花了481毫秒，
-        // 用户看到的就是「点了但面板没出来」。
+        // Compute the icon, app name, and launch Activity for each panel row right here.
+        // These tasks (LauncherApps binder + icon decode) used to all be in onBindViewHolder,
+        // i.e. landing in the panel's first-frame measure/layout: measured, just 7 rows cost 481ms,
+        // so what the user saw was "tapped but the panel didn't appear".
         val itemData = HashMap<String, FloatingItemData>()
         val rows = ArrayList<Pair<String, Int>>()
         apps.forEach { rows.add(Pair(it.packageName, it.userId)) }
-        //最小化中的那几个应用也是面板内容
+        // The apps currently minimized are also panel content
         runCatching {
             val stack = FreeformHelper.getMiniFreeformStackSet()
             for (i in 0 until stack.size()) {
@@ -283,7 +283,7 @@ class ChooseAppFloatingView(
         return Triple(apps, launchers, itemData)
     }
 
-    /** 与适配器一致：同一个包有多个可启动 Activity 时取最后一个。 */
+    /** Consistent with the adapter: when a package has multiple launchable Activities, take the last one. */
     private fun lastLaunchActivity(launchers: List<ResolveInfo>, packageName: String): String {
         var activityName = ""
         launchers.forEach {
@@ -294,7 +294,7 @@ class ChooseAppFloatingView(
         return activityName
     }
 
-    /** 两份列表是否是同一批应用（包名 + 用户 id + 排序位），用来决定要不要重绑。 */
+    /** Whether the two lists contain the same batch of apps (package name + user id + sort position), used to decide whether to rebind. */
     private fun sameAppList(a: List<FreeFormAppsEntity>, b: List<FreeFormAppsEntity>): Boolean {
         if (a.size != b.size) return false
         for (i in a.indices) {
@@ -306,11 +306,11 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 把应用列表绑到面板上。第一次调用时创建列表容器，之后只换 adapter。
+     * Binds the app list to the panel. Creates the list container on the first call, then only swaps the adapter.
      */
     private fun bindAppList(apps: List<FreeFormAppsEntity>) {
         val root = floatingView ?: return
-        // 数据没变就不重绑：面板树是提前搭好的，重绑一遍反而会让列表闪一下
+        // Don't rebind when data hasn't changed: the panel tree is pre-built, and rebinding would make the list flicker
         val last = boundApps
         if (appsRecyclerView != null && last != null && sameAppList(last, apps)) return
         val recyclerView = appsRecyclerView ?: createRecyclerContainer(root) ?: return
@@ -319,15 +319,15 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 只有第一次真正要显示应用列表时才建列表容器。
-     * 放在 bindAppList 而不是 addFloatingWindow 里，是为了点下去能先把窗口挂上去。
+     * Creates the list container only on the first time we actually need to show the app list.
+     * Placing it in bindAppList rather than addFloatingWindow lets the window be attached first on tap.
      */
     private fun createRecyclerContainer(root: View): RecyclerView? {
-        //TODO 这里有一个奇怪的事情：当下面的xml布局为google的cardview时，就会解析失败，但是用androidx的就可以
+        //TODO there's a strange thing here: when the xml layout below uses Google's cardview, parsing fails, but using the androidx one works
         val recyclerAppsLayout = LayoutInflater.from(context)
             .inflate(R.layout.view_choose_app_floting_view_recycler_app, null, false)
         val recyclerView: RecyclerView = recyclerAppsLayout.findViewById(R.id.recycler_view) ?: return null
-        //添加到界面
+        //Add to the UI
         val contain = if (showPositionX == -1) root.findViewById<LinearLayout>(R.id.recycler_view_contain_left)
             else root.findViewById<LinearLayout>(R.id.recycler_view_contain_right)
         contain?.addView(recyclerAppsLayout)
@@ -340,7 +340,7 @@ class ChooseAppFloatingView(
         return ChooseAppFloatingAdapter(
             context,
             apps,
-            // 冷数据路径下可能还没查到，给个空列表；数据到位后 loadCache 会重绑一次
+            // On the cold-data path this may not be queried yet, so pass an empty list; loadCache rebinds once data arrives
             cachedLaunchers ?: ArrayList<ResolveInfo>(),
             userHandleMap,
             cachedItemData,
@@ -354,14 +354,14 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 把面板挂上窗口。视图树一般已经由 warmPanelTree（或上一次打开）搭好了，
-     * 这里只剩算一遍窗口参数 + addView；只有预热没成功时才会在这里现建树。
+     * Attaches the panel to a window. The view tree is usually already built by warmPanelTree (or a previous open),
+     * so this only recomputes window params + addView; the tree is built here from scratch only when prewarm didn't succeed.
      */
     private fun addFloatingWindow() {
         if (windowAttached) return
-        // 先裁决再挂窗：面板用的是普通悬浮窗类型（见上面那段注释），没权限时**一次 addView 都不要调**。
-        // 旧写法是先盲发一次、抛异常了再看权限，而那一次失败的请求在 HyperOS 14 上会把
-        // 本进程之后所有非系统悬浮窗永久隐藏掉（原因见 PermissionUtils.pickOverlayWindowType）。
+        // Decide before attaching: the panel uses the ordinary overlay window type (see the comment above); without permission **don't call addView once**.
+        // The old form blindly sent once and only checked permission after an exception, and that failed request on HyperOS 14 would
+        // permanently hide all non-system overlay windows this process later creates (see PermissionUtils.pickOverlayWindowType).
         if (!Settings.canDrawOverlays(context)) {
             Log.w(TAG, "panel_start_rejected no_overlay_permission")
             dropPanelAndAskForPermission(context.getString(R.string.scene_open_panel_failed))
@@ -370,11 +370,11 @@ class ChooseAppFloatingView(
         if (floatingView == null) {
             floatingView = LayoutInflater.from(context).inflate(R.layout.view_choose_app_floating, null, false)
         }
-        //贴边方向与屏幕尺寸都可能在上次打开之后变过，窗口参数每次重算
+        // The edge-alignment side and screen size may both have changed since the last open, so recompute window params every time
         floatingViewLayoutParams.apply {
             width = WindowManager.LayoutParams.MATCH_PARENT
             height = WindowManager.LayoutParams.MATCH_PARENT
-            //选择应用界面决定还是禁止在系统界面显示了
+            // After deliberation, the app-picker screen still forbids showing over system UI
             type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             format = PixelFormat.RGBA_8888
@@ -386,8 +386,8 @@ class ChooseAppFloatingView(
                 max(context.resources.displayMetrics.heightPixels, context.resources.displayMetrics.widthPixels)
             }
             x = width / 2
-            // 0 = 不要窗口动画。原来是 Animation_Dialog（缩放+淡入约350毫秒），
-            // 数据都预热好了以后，用户感觉到的「点了半天才出来」就剩这段动画了。
+            // 0 = no window animation. It used to be Animation_Dialog (scale + fade ~350ms);
+            // once data is fully prewarmed, the only remaining "tapped but took forever to appear" is this animation.
             windowAnimations = 0
             alpha = 1f
         }
@@ -403,14 +403,14 @@ class ChooseAppFloatingView(
         } catch (e: Exception) {
             Log.w(TAG, "panel_add_view_failed", e)
             windowAttached = false
-            // 没挂上去时这句必抛，不能让它把异常抛回调用方（那会把服务进程带崩）
+            // When it wasn't attached this line must throw; it must not propagate the exception back to the caller (that would crash the service process)
             try {
                 windowManager.removeViewImmediate(floatingView)
             } catch (removeException: Exception) {
                 Log.w(TAG, "panel_remove_half_attached_view_failed", removeException)
             }
-            // 不重试：面板本来就固定是普通悬浮窗类型，重试等于再发一次同样的请求，
-            // 而在这台机上多发一次被拒的请求就多一次把全进程悬浮窗毒掉的机会。
+            // Don't retry: the panel is fixed to the ordinary overlay window type, so retrying means sending the same request again,
+            // and on this device each extra rejected request is another chance to poison overlay windows process-wide.
             DiagnosticsLog.recordRes(
                 context, "overlay_rejected",
                 R.string.diag_panel_attach_exception, e.javaClass.simpleName
@@ -420,22 +420,22 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 面板挂不上：丢掉现建的视图树、清掉「正开着」标记，并告知用户缺什么权限。
+     * When the panel can't be attached: drop the freshly built view tree, clear the "currently open" flag, and tell the user which permission is missing.
      *
-     * 只告知、不跳系统设置页（原因见 [PermissionUtils.guideToGrantOverlayPermission]）。
+     * Only informs, doesn't navigate to system settings (see [PermissionUtils.guideToGrantOverlayPermission]).
      */
     private fun dropPanelAndAskForPermission(scene: String) {
-        //没权限：现建的这棵树留着也没用，丢掉
+        // No permission: keeping this freshly built tree is pointless, drop it
         floatingView = null
         appsRecyclerView = null
         boundApps = null
-        // 窗口没挂上，一定要把「正开着」标记清掉，不然下一次点通知/把手会被挡掉
+        // The window isn't attached, so the "currently open" flag must be cleared, otherwise the next tap on the notification/handle would be blocked
         removeCallback.onChooseAppWindowRemove()
         PermissionUtils.guideToGrantOverlayPermission(context, scene)
     }
 
     /**
-     * 屏幕方向改变监听
+     * Screen orientation change listener
      */
     fun onScreenRotationChanged(newRotation: Int) {
         screenRotation = newRotation
@@ -444,14 +444,14 @@ class ChooseAppFloatingView(
         }catch (e: Exception) {
             Log.w(TAG, "remove_all_apps_view_failed(rotation)", e)
         }
-        // 旧的树是按旋转前的尺寸与贴边方向搭的，整个丢掉重来
+        // The old tree was built for the pre-rotation size and edge-alignment, so discard it entirely and rebuild
         discardPanelTree()
         removeCallback.onChooseAppWindowRemove()
-        // 等旋转后的屏幕配置稳定下来再把面板树重新搭好，别让下一次点开还要现场 inflate
+        // Wait until the post-rotation screen config stabilizes before rebuilding the panel tree, so the next open doesn't have to inflate on the spot
         scheduleWarmPanelTree()
     }
 
-    /** 等旋转后的屏幕配置稳定下来再重新搭面板树。 */
+    /** Waits until the post-rotation screen config stabilizes, then rebuilds the panel tree. */
     private fun scheduleWarmPanelTree() {
         scope.launch {
             delay(600)
@@ -460,21 +460,21 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 摘窗口并丢掉面板视图树（旋转/换边/服务销毁：这些情况下旧树的尺寸或方向不对）。
+     * Detaches the window and discards the panel view tree (rotation / side change / service destroy: in these cases the old tree's size or orientation is wrong).
      *
-     * @param notifyRemoved 要不要告诉服务「面板收起了」（把把手重新挂回来）；服务自己正在销毁时要传 false
+     * @param notifyRemoved whether to tell the service "the panel is collapsed" (so it re-attaches the handle); pass false when the service itself is being destroyed
      */
     private fun discardPanelTree(notifyRemoved: Boolean = true) {
         if (windowAttached) {
             try {
                 windowManager.removeViewImmediate(floatingView)
             } catch (e: Exception) {
-                // 面板窗口没摘成就是僵尸窗口：看不见、点不开，但一直占着 surface。
+                // A panel window that failed to detach is a zombie window: invisible, untappable, yet still holding a surface.
                 Log.w(TAG, "discard_panel_window_failed", e)
             }
             windowAttached = false
-            // 面板是我们自己摘掉的，不是用户点的：服务那边的「正开着」标记必须跟着清掉，
-            // 否则它会以为面板还在，下一次点通知/点把手被防重入挡掉，看起来就是点了没反应。
+            // We collapsed the panel ourselves, not the user: the service's "currently open" flag must be cleared too,
+            // otherwise it thinks the panel is still up and the next tap on the notification/handle is blocked by re-entry protection, looking like a dead tap.
             if (notifyRemoved) {
                 removeCallback.onChooseAppWindowRemove()
             }
@@ -484,10 +484,10 @@ class ChooseAppFloatingView(
         boundApps = null
     }
 
-    /** 服务销毁：面板的窗口与视图树都丢掉。 */
+    /** Service destroyed: discard both the panel's window and view tree. */
     fun dispose() {
         verifyJob?.cancel()
-        // 本进程都不在了，别再回调过去把把手窗口重新挂上
+        // This process is gone, so don't call back to re-attach the handle window
         discardPanelTree(notifyRemoved = false)
         try {
             windowManager.removeViewImmediate(allAppsView)
@@ -497,7 +497,7 @@ class ChooseAppFloatingView(
         allAppsView = null
     }
 
-    /** 设置里换了左右侧：面板要按新的那一侧重建。 */
+    /** The left/right side was changed in settings: the panel must be rebuilt for the new side. */
     fun onSideChanged() {
         discardPanelTree()
         warmPanelTree()
@@ -577,7 +577,7 @@ class ChooseAppFloatingView(
                         }
                     }
 
-                    //点击外部关闭悬浮窗
+                    // Tap outside to dismiss the overlay
                     allAppsView!!.setOnTouchListener { _, _ ->
                         try {
                             windowManager.removeViewImmediate(allAppsView)
@@ -599,15 +599,15 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 关闭面板：只摘窗口，视图树与列表数据都留着——下次点开直接 addView 同一棵树。
+     * Close the panel: only detach the window, keeping the view tree and list data—next open just addViews the same tree.
      */
     private fun removeWindow() {
         if (windowAttached) {
             try {
                 windowManager.removeViewImmediate(floatingView)
             } catch (e: Exception) {
-                // 摘失败后面板会永久不可见，而 windowAttached 会被置 false，
-                // 下次就再也不会去摘它了——这就是那种「面板打不开也关不掉」的根源。
+                // If detaching fails the panel becomes permanently invisible, yet windowAttached is set to false,
+                // so it will never try to detach again—this is the root of the "panel won't open and won't close" problem.
                 Log.w(TAG, "remove_panel_window_failed", e)
             }
             windowAttached = false
@@ -616,7 +616,7 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 根据序号排序
+     * Sort by index
      */
     inner class AppsComparable: Comparator<FreeFormAppsEntity> {
         override fun compare(o1: FreeFormAppsEntity?, o2: FreeFormAppsEntity?): Int {
@@ -625,7 +625,7 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 根据拼音排序
+     * Sort by pinyin
      */
     inner class PinyinComparable : Comparator<LauncherActivityInfo>{
         override fun compare(o1: LauncherActivityInfo?, o2: LauncherActivityInfo?): Int {
@@ -634,14 +634,14 @@ class ChooseAppFloatingView(
     }
 
     /**
-     * 当叠加层移除时回调
+     * Callback when the overlay is removed
      */
     interface OnWindowRemoveCallback {
         fun onChooseAppWindowRemove()
     }
 
     /**
-     * 悬浮窗点击监听器
+     * Overlay click listener
      */
     abstract class ClickListener {
         open fun onClick() {}

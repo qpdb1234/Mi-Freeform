@@ -16,15 +16,15 @@ import com.moonlight.freeform.utils.ServiceUtils
 import com.tencent.bugly.crashreport.CrashReport
 
 /**
- * 启动路由页，只做「隐私政策 + 权限」判断然后立刻跳转。
+ * Launch-routing page: it only makes the "privacy policy + permissions" decision and jumps immediately.
  *
- * 开屏画面已经删除：这里不再加载任何布局（原来的 logo 页 activity_splash 已移除），
- * 也不再 Thread.sleep(500) 延时跳转。配合 Theme.MiFreeform.Splash
- * （透明窗口 + windowDisablePreview），点图标到进入设置页之间屏幕上不会闪出任何东西。
+ * The splash screen has been removed: this no longer loads any layout (the old logo page activity_splash was
+ * removed), and it no longer does a Thread.sleep(500) delayed jump. Combined with Theme.MiFreeform.Splash
+ * (transparent window + windowDisablePreview), nothing flashes on screen between tapping the icon and entering the settings page.
  */
 class SplashActivity : AppCompatActivity() {
 
-    //应用内语言切换：按设置包裹基础 Context（见 LocaleHelper）
+    //In-app language switch: wrap the base Context per the saved setting (see LocaleHelper)
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.moonlight.freeform.utils.LocaleHelper.wrap(newBase))
     }
@@ -58,7 +58,7 @@ class SplashActivity : AppCompatActivity() {
 
     private fun toCheckPermission() {
         if (checkPermission()) {
-            //移除了引导界面，但是仍然可以自行查看 q220917.2
+            //The guide screen was removed, but it can still be viewed manually q220917.2
             showMain()
         } else {
             showPermission()
@@ -66,7 +66,7 @@ class SplashActivity : AppCompatActivity() {
     }
 
     /**
-     * 检查米窗所需要的权限
+     * Check the permissions Mi-Freeform needs
      */
     private fun checkPermission(): Boolean {
         when (viewModel.getIntSp("service_type", KeepAliveService.SERVICE_TYPE)) {
@@ -80,8 +80,8 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun showMain() {
-        // 只有开了「从最近任务隐藏」才需要 EXCLUDE_FROM_RECENTS；
-        // 该设置改动时会自己重建任务，所以这里只负责冷启动那条路径。
+        // FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS is only needed when "hide from Recents" is on;
+        // that setting rebuilds the task itself when it changes, so this only handles the cold-start path.
         var flags = Intent.FLAG_ACTIVITY_NEW_TASK
         if (viewModel.getBooleanSp("hide_from_recent", false)) {
             flags = flags or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS

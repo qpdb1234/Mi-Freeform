@@ -69,25 +69,26 @@ class MiFreeform : Application() {
         var me: MiFreeform? = null
         private const val TAG = "MiFreeForm"
         /**
-         * 本应用自身的包名。
+         * Package name of this application itself.
          *
-         * 不能写死包名字符串：applicationId 可能被修改，
-         * 而 HookLauncher 需要用它去 createPackageContext 拿到本应用代码。写死会导致
-         * 取不到本应用的 Context。
+         * Must not be hardcoded: applicationId may change, and HookLauncher uses it
+         * to call createPackageContext to obtain this app's code. A hardcoded value
+         * would cause the Context lookup to fail.
          */
         val PACKAGE_NAME: String = com.moonlight.freeform.BuildConfig.APPLICATION_ID
-        //软件版本，该版本指需要再次展示介绍界面的版本
+        // Software version – indicates when the intro screen should be shown again
         const val VERSION = 1
-        //隐私策略版本，用于展示隐私策略
+        // Privacy policy version, used to gate the privacy dialog
         const val VERSION_PRIVACY = 1
         const val APP_SETTINGS_NAME = "app_settings"
         private const val SUI_CODE = 0
 
         /**
-         * 把一次失败记进可回放的诊断记录。
+         * Records a failure into the replayable diagnostics log.
          *
-         * 以前这里只往一个从不被读取的 StringBuilder 里追加，等于没记；
-         * 现在同时写进 DiagnosticsLog（落盘、重启后仍在）和 logcat。
+         * Previously this only appended to a StringBuilder that was never read,
+         * effectively discarding the info. Now it writes to both DiagnosticsLog
+         * (persisted to disk, survives reboot) and logcat.
          */
         fun addLog(tag: String, functionName: String, e: Exception) {
             val context = me ?: return
@@ -103,7 +104,7 @@ class MiFreeform : Application() {
         super.onCreate()
         me = this
 
-        //设置项改名后的旧值搬迁，必须排在任何读设置的动作之前
+        // Migrate old preference keys after renames; must run before any settings read
         com.moonlight.freeform.utils.SettingsKeyMigration.migrate(this)
 
         DynamicColors.applyToActivitiesIfAvailable(this);
@@ -119,8 +120,9 @@ class MiFreeform : Application() {
     }
 
     override fun attachBaseContext(base: Context) {
-        //应用内语言切换：按设置包裹基础 Context，Application 级资源（含各 Service 的
-        // applicationContext）随之取对应语言；改设置后要到下次进程启动才重新读取
+        // In-app language switch: wrap base Context per setting so Application-level
+        // resources (including applicationContext used by Services) resolve the correct
+        // locale; takes effect on next process start after the setting changes.
         super.attachBaseContext(com.moonlight.freeform.utils.LocaleHelper.wrap(base))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             HiddenApiBypass.addHiddenApiExemptions("")

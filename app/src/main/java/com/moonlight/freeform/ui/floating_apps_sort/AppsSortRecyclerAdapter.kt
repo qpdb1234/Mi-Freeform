@@ -23,7 +23,7 @@ import com.moonlight.freeform.room.FreeFormAppsEntity
 /**
  * @author sunshine
  * @date 2021/1/31
- * 小窗应用回收布局适配器
+ * Adapter for the freeform app list in the sort screen
  */
 class AppsSortRecyclerAdapter(
         private val pm: PackageManager,

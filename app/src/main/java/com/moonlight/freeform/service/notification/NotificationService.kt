@@ -30,12 +30,13 @@ import java.util.Arrays.stream
 
 
 /**
- * 监听通知类
+ * Notification listener class
  */
 class NotificationService : NotificationListenerService(),
     SharedPreferences.OnSharedPreferenceChangeListener {
 
-    //应用内语言切换：接管通知的「小窗打开」按钮文字随设置语言（通知渠道名由系统缓存，不随切换更新）
+    // In-app language switch: the "open in freeform" button text of taken-over notifications follows the
+    // setting locale (the notification channel name is cached by the system and not updated on switch)
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.moonlight.freeform.utils.LocaleHelper.wrap(newBase))
     }
@@ -49,7 +50,7 @@ class NotificationService : NotificationListenerService(),
 
     private var enable = false
     /**
-     * 服务开启
+     * Service started listening
      */
     override fun onListenerConnected() {
         super.onListenerConnected()
@@ -68,30 +69,32 @@ class NotificationService : NotificationListenerService(),
         if (!enable || sbn?.packageName == MiFreeform.PACKAGE_NAME) return
 
         if (notificationApps.isNotEmpty() && sbn != null) {
-            //如果通知是指定软件发送的
+            // If the notification was sent by a whitelisted app
             if (notificationAppsPackageName.contains(sbn.packageName)) {
-                //不可清除通知不接收，只接受消息
+                // Ignore non-clearable notifications; only accept messages
                 if (!sbn.isClearable) return
-                //如果和上次时间一样，那么判断为是一条通知，不知道为什么，cancel就会出两条通知，只能这样了
+                // If the timestamp equals the last one, treat it as the same notification.
+                // Not sure why, but cancel produces two notifications, so this is the only workaround.
                 if (sbn.postTime == lastNotificationTime) return
-                //发出自定义通知
+                // Post our custom notification
                 freeformNotification(sbn)
-                //清除源应用通知
+                // Dismiss the source app's notification
                 cancelNotification(sbn.key)
                 lastNotificationTime = sbn.postTime
             }
         }
     }
 
-    // key 必须声明为可空：华为 HarmonyOS 在 sp.clear() 时回调 key=null，
-    // Kotlin 非空参数的入口检查会在方法体执行前抛 NPE（真机恢复默认设置闪退根因之一）。
+    // key must be declared nullable: Huawei HarmonyOS invokes the callback with key=null on sp.clear();
+    // Kotlin's non-null parameter check would throw NPE before the method body runs
+    // (one root cause of the on-device crash when restoring default settings).
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         runCatching {
         when(key) {
             "notify_freeform" -> {
                 enable = sp.getBoolean("notify_freeform", false)
             }
-            //当所选应用变化时调用
+            // Called when the selected apps change
             "notify_freeform_changed" -> {
                 getNotificationApps()
             }
@@ -111,7 +114,7 @@ class NotificationService : NotificationListenerService(),
     }
 
     /**
-     * 小窗通知
+     * Freeform notification
      */
     @SuppressLint("UseCompatLoadingForDrawables", "UnspecifiedImmutableFlag")
     private fun freeformNotification(sbn: StatusBarNotification) {
@@ -124,7 +127,7 @@ class NotificationService : NotificationListenerService(),
         }catch (e: Exception) {
             null
         }
-        //创建通知渠道
+        // Create the notification channel
         val channel = NotificationChannel(
             CHANNEL_ID,
                 getString(R.string.freeform_channel_id),
@@ -139,7 +142,7 @@ class NotificationService : NotificationListenerService(),
 
         val freeFormButton = Notification.Action.Builder(smallIcon, getString(R.string.open_by_freeform), pendingIntent).build()
 
-        //设置通知
+        // Configure the notification
         val notificationBuilder = Notification.Builder(this,
             CHANNEL_ID
         )
@@ -152,7 +155,7 @@ class NotificationService : NotificationListenerService(),
             .addAction(freeFormButton)
         if (largeIcon != null) notificationBuilder.setLargeIcon(largeIcon)
         val notification = notificationBuilder.build()
-        //点击通知后消失
+        // Dismiss after the notification is tapped
         notification.flags = Notification.FLAG_AUTO_CANCEL
         notificationManager.notify(2, notification)
     }

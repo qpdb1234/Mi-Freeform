@@ -7,15 +7,15 @@ import androidx.room.PrimaryKey
 /**
  * @author sunshine
  * @date 2021/1/31
- * 开启小窗数据库实体类
+ * Database entity for apps that open in a freeform window
  */
 @Entity
 class FreeFormAppsEntity(
-    //用于排序
+    //Used for ordering
     @PrimaryKey(autoGenerate = true)
     val sortNum: Int,
     var packageName: String,
-    //20210604新增用户标识
+    //Added 2021-06-04: user identifier
     var userId: Int = 0
 ) {
     override fun toString(): String {

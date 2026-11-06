@@ -22,7 +22,7 @@ import java.util.*
 
 class FloatingAppsSortActivity : AppCompatActivity() {
 
-    //应用内语言切换：按设置包裹基础 Context（见 LocaleHelper）
+    //In-app language switch: wrap the base Context per the saved setting (see LocaleHelper)
     override fun attachBaseContext(newBase: android.content.Context) {
         super.attachBaseContext(com.moonlight.freeform.utils.LocaleHelper.wrap(newBase))
     }
@@ -42,7 +42,7 @@ class FloatingAppsSortActivity : AppCompatActivity() {
 
         var firstInit = true
 
-        //处理多用户
+        //Handle multi-user
         val launcherApps: LauncherApps = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
         val userManager = getSystemService(Context.USER_SERVICE) as UserManager
         val userHandleMap = HashMap<Int, UserHandle>()
@@ -57,7 +57,7 @@ class FloatingAppsSortActivity : AppCompatActivity() {
             val appsList = it as ArrayList<FreeFormAppsEntity>
 
             if (firstInit) {
-                //删除已经卸载的app
+                //Remove apps that have been uninstalled
                 val noInstallAppsList = ArrayList<FreeFormAppsEntity>()
                 appsList.forEach { entity ->
                     if (entity.userId == 0) {
@@ -72,11 +72,11 @@ class FloatingAppsSortActivity : AppCompatActivity() {
                     }
                 }
                 viewModel.deleteNotInstall(noInstallAppsList)
-                //有需要删除的应用时不加载，等删除后再加载
+                //When there are apps to remove, don't load yet; load after the removal
                 if (noInstallAppsList.size == 0) {
                     firstInit = false
 
-                    //加载条关闭
+                    //Close the loading bar
                     binding.progress.isIndeterminate = false
                     binding.progress.visibility = View.GONE
 

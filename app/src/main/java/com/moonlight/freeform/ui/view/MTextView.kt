@@ -6,7 +6,7 @@ import android.util.AttributeSet
 /**
  * @date 2022/8/23
  * @author sunshine0523
- * 获得焦点以自动跑马灯
+ * Always reports focus so the marquee scrolls automatically
  */
 class MTextView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null

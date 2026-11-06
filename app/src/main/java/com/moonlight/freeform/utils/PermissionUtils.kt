@@ -21,16 +21,16 @@ import com.moonlight.freeform.service.KeepAliveService
 object PermissionUtils {
 
     /**
-     * 「缺悬浮窗权限」这条诊断记录的 tag。写记录与读记录（常驻通知要不要给「去授权」
-     * 按钮）两边共用同一个常量，避免字符串写错就不动了。
+     * The tag for the "overlay permission missing" diagnostic record. The writer and the reader (whether the
+     * ongoing notification shows a "grant" button) share the same constant, to avoid silently breaking on a typo.
      */
     const val DIAG_TAG_OVERLAY_MISSING = "overlay_permission_missing"
 
     /**
-     * 从哪个版本开始「代码自己跳授权页」会把全进程悬浮窗毒掉。
+     * From which version does "code auto-navigating to the grant page" poison overlay windows process-wide.
      *
-     * 实测造毒的是 HyperOS 14（API 34）；`mForceHideNonSystemOverlayWindow` 字段虽然从
-     * Android 12 就有，但 12 上重新授权会清掉标记（诊断报告 §0.4）。34 以下保留旧跳转。
+     * Measured poisoner: HyperOS 14 (API 34); the `mForceHideNonSystemOverlayWindow` field has existed since
+     * Android 12, but on 12 re-granting clears the flag (diagnostics report §0.4). Below 34 the old navigation is kept.
      */
     private const val OVERLAY_POISON_MIN_SDK = 34
 
@@ -48,16 +48,16 @@ object PermissionUtils {
     }
 
     /**
-     * 这次有资格用哪种非系统悬浮窗类型，返回 null 表示**两种都不要试**。
+     * Which non-system overlay window type this attempt is eligible for; returning null means **neither should be tried**.
      *
-     * HyperOS 14（Android 14）实测：在没资格的状态下调一次 `addView`，会被系统记成一次
-     * 「被拒的非系统悬浮窗请求」，而该进程之后创建的、以及已经存在的**所有**非系统悬浮窗
-     * 都会被永久置为 `mForceHideNonSystemOverlayWindow=true`——重新授权不解除，
-     * 只有重启进程才恢复。所以「先试一种、抛异常再换下一种」在这个系统上是致命的写法，
-     * 资格必须在 addView 之前裁决清楚。
+     * Measured on HyperOS 14 (Android 14): calling `addView` once in an ineligible state is recorded by the system as a
+     * "rejected non-system overlay request", after which **all** non-system overlay windows this process later creates, and
+     * already-existing ones, are permanently set to `mForceHideNonSystemOverlayWindow=true`—re-granting does not clear it;
+     * only restarting the process recovers. So "try one type, catch the exception, try the next" is a fatal pattern on this system;
+     * eligibility must be decided clearly before addView.
      *
-     * 优先级沿用旧行为：无障碍服务确实开着时用 ACCESSIBILITY_OVERLAY（能盖在系统界面之上），
-     * 否则用普通 APPLICATION_OVERLAY。
+     * The priority follows the old behavior: use ACCESSIBILITY_OVERLAY when the accessibility service is genuinely on (it can cover system UI),
+     * otherwise use the regular APPLICATION_OVERLAY.
      */
     fun pickOverlayWindowType(context: Context): Int? = when {
         isAccessibilitySettingsOn(context) -> WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
@@ -66,42 +66,40 @@ object PermissionUtils {
     }
 
     /**
-     * 常驻通知这条通道此刻用户到底看不看得见。
+     * Whether the user can actually see the ongoing-notification channel right now.
      *
-     * 本应用 targetSdk 32，Android 13+ 上 POST_NOTIFICATIONS 是安装时自动授予的，所以正常情况下
-     * 不需要运行时申请；但用户可以事后在系统设置里把米窗的通知整体关掉（HyperOS 还有“智能管控”
-     * 会自行关），那时常驻通知连同上面的「去授权」按钮一起消失。
-     * 只告知不跳系统设置页，是因为代码自己跳那一次在 Android 14 上会把全进程悬浮窗隐藏掉（见上面注释），
-     * 而这里只读一个本地状态，不涉及任何跳转。
+     * This app targets SDK 32, and on Android 13+ POST_NOTIFICATIONS is granted automatically at install, so normally
+     * no runtime request is needed; but the user can later turn off all MiFreeform notifications in system settings (HyperOS also
+     * has a "smart control" that may turn them off on its own), at which point the ongoing notification and its "grant" button disappear together.
+     * We only inform without navigating to system settings because that self-initiated navigation on Android 14 would hide overlay windows process-wide (see the note above),
+     * whereas here we only read a local state and perform no navigation.
      */
     fun areNotificationsVisible(context: Context): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()
 
     /**
-     * 缺悬浮窗权限时的统一告知：落一条可回放记录 + 弹 Toast。
+     * Unified notification when the overlay permission is missing: persist a replayable record + show a Toast.
      *
-     * Android 14（API 34）及以上**绝不自动跳系统设置页**，理由如下；34 以下沿用旧版的
-     * 一键直达（见 [openOverlayPermissionPage]）。
+     * On Android 14 (API 34) and above we **never auto-navigate to the system settings page**, for the reasons below; below 34 the old one-tap shortcut is kept (see [openOverlayPermissionPage]).
      *
-     * 为什么不跳（HyperOS 14 实测，诊断报告 §1.12）：走过一次「开窗被拒」的分支之后，
-     * 分支末尾那次 `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)` 会让本进程之后创建的
-     * 所有非系统悬浮窗被置为 `mForceHideNonSystemOverlayWindow=true`——小窗、侧边栏、面板
-     * 一起消失，重新授权不解除，只能重启进程甚至重启手机。真机定量：保留这一跳 4/4 造毒，
-     * 只去掉这一跳（其余照旧）0/4 造毒。反过来**单独**跳这一个设置页反倒不造毒，
-     * 所以授权入口照旧保留，只是改由用户主动点：常驻通知上的「去授权」-> [PermissionActivity]
-     * 权限页 -> 用户点「悬浮窗」那张卡片。
+     * Why we don't navigate (measured on HyperOS 14, diagnostics report §1.12): after going through a "window creation rejected" branch once,
+     * the `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)` at the end of that branch sets all non-system overlay windows this process later creates
+     * to `mForceHideNonSystemOverlayWindow=true`—freeforms, sidebar, and panel all vanish, re-granting does not clear it, and only restarting the process
+     * or even the phone helps. Quantitative on real device: keeping this navigation poisoned 4/4; removing only this navigation (everything else unchanged) poisoned 0/4.
+     * Conversely, navigating to this settings page **alone** does not poison, so the grant entry point is still kept—just triggered by an explicit user tap:
+     * the ongoing notification's "grant" -> [PermissionActivity] permission page -> the user taps the "overlay" card.
      *
-     * 为什么旧系统要保留那一跳：造毒的那个字段是 Android 12 才引入的，而 12 上重新
-     * 授权就会把标记清掉（实测 10/12 不会进入该状态），所以 ≤33 上这一跳只有便利没有代价；
-     * 为了 14 的修复把它从 10/12 用户手里拿掉是不划算的行为回退。
+     * Why the navigation is kept on older systems: the poisoning field was only introduced in Android 12, and on 12 re-granting
+     * clears the flag (measured: 10/12 never enter this state), so on ≤33 this navigation is purely convenient with no cost;
+     * taking it away from 10/12 users for the 14 fix would be an unwarranted behavior regression.
      *
-     * 授权指引写在记录正文里，因为常驻通知显示的正是最近一条记录（F3）。
-     * 但这条通道本身可能已经断了：用户把米窗的通知整体关掉时，[areNotificationsVisible] 读到 false，
-     * 「点通知上的去授权」就成了死指引，所以这时换一条指向应用图标的说法。
+     * The grant guidance is written into the record body, because the ongoing notification shows exactly the latest record (F3).
+     * But this channel itself may be broken: when the user has turned off all MiFreeform notifications, [areNotificationsVisible] reads false,
+     * making "tap grant on the notification" a dead hint, so in that case we switch to wording that points at the app icon.
      *
-     * @param scene 面向用户的场景描述，例如「侧边栏把手挂不出来」。
-     *              调用方必须传 `context.getString(R.string.scene_*)`，不能在这里写中文字面量——
-     *              这段正文会直接出现在用户的通知里。
+     * @param scene a user-facing scene description, e.g. "the sidebar handle couldn't be attached".
+     *              Callers must pass `context.getString(R.string.scene_*)` and not write Chinese literals here—
+     *              this body text appears directly in the user's notification.
      */
     fun guideToGrantOverlayPermission(context: Context, scene: String) {
         val notificationVisible = areNotificationsVisible(context)
@@ -124,11 +122,11 @@ object PermissionUtils {
     }
 
     /**
-     * 跳系统「显示在其他应用界面上层」设置页。
+     * Navigates to the system "display over other apps" settings page.
      *
-     * 只能由 34 以下的 [guideToGrantOverlayPermission] 或用户主动点击调用：Android 14 上
-     * 代码自己跳这一次会把本进程之后的所有悬浮窗毒掉（见上面的注释）。
-     * 部分定制 ROM 没有这个页面，所以自带 try/catch，不能把异常抛回调用方的窗口创建流程里。
+     * May only be called by [guideToGrantOverlayPermission] on below 34 or by an explicit user tap: on Android 14
+     * this code-initiated navigation would poison all overlay windows this process later creates (see the note above).
+     * Some custom ROMs lack this page, so a try/catch is built in; the exception must not be thrown back into the caller's window-creation flow.
      */
     fun openOverlayPermissionPage(context: Context) {
         try {

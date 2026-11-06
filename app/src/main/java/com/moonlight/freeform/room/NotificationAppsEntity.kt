@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 /**
  * @author sunshine
  * @date 2021/1/31
- * 开启小窗数据库实体类
+ * Database entity for apps that open in a freeform window
  */
 @Entity
 class NotificationAppsEntity(
@@ -15,7 +15,7 @@ class NotificationAppsEntity(
 //    val id: Int,
     @PrimaryKey
     val packageName: String,
-    //20210604新增用户标识
+    //Added 2021-06-04: user identifier
     val userId: Int = 0
 )
 
