@@ -487,7 +487,7 @@ class FreeformStudyViewNew(
                 }
                 //Decide first, then open the window, for the same reason as FreeformView.showWindow: when unauthorized / accessibility service off,
                 //that blind addView is guaranteed rejected, and a single rejected request can permanently hide all subsequent non-system overlay windows
-                //in this process (measured on HyperOS 14, see PermissionUtils.pickOverlayWindowType).
+                //in this process (measured on Android 14, see PermissionUtils.pickOverlayWindowType).
                 val overlayAllowed = Settings.canDrawOverlays(context)
                 val accessibilityOverlayUsable = PermissionUtils.isAccessibilitySettingsOn(context)
                 if (!overlayAllowed && !accessibilityOverlayUsable) {
@@ -582,7 +582,7 @@ class FreeformStudyViewNew(
     /**
      * Tells the user the overlay permission is missing, report only without jumping to system settings.
      *
-     * Previously this did `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)`, and on HyperOS 14
+     * Previously this did `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)`, and on Android 14
      * that jump inside the rejection branch is exactly what makes all subsequent overlay windows in this process "invisible"
      *(see [PermissionUtils.guideToGrantOverlayPermission] for the measurement and rationale).
      */

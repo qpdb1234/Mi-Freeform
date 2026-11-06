@@ -29,7 +29,7 @@ object PermissionUtils {
     /**
      * From which version does "code auto-navigating to the grant page" poison overlay windows process-wide.
      *
-     * Measured poisoner: HyperOS 14 (API 34); the `mForceHideNonSystemOverlayWindow` field has existed since
+     * Measured poisoner: Android 14 (API 34, near-stock LineageOS on a Xiaomi MIX 2S); the `mForceHideNonSystemOverlayWindow` field has existed since
      * Android 12, but on 12 re-granting clears the flag (diagnostics report §0.4). Below 34 the old navigation is kept.
      */
     private const val OVERLAY_POISON_MIN_SDK = 34
@@ -50,7 +50,7 @@ object PermissionUtils {
     /**
      * Which non-system overlay window type this attempt is eligible for; returning null means **neither should be tried**.
      *
-     * Measured on HyperOS 14 (Android 14): calling `addView` once in an ineligible state is recorded by the system as a
+     * Measured on Android 14 (near-stock LineageOS): calling `addView` once in an ineligible state is recorded by the system as a
      * "rejected non-system overlay request", after which **all** non-system overlay windows this process later creates, and
      * already-existing ones, are permanently set to `mForceHideNonSystemOverlayWindow=true`—re-granting does not clear it;
      * only restarting the process recovers. So "try one type, catch the exception, try the next" is a fatal pattern on this system;
@@ -69,8 +69,8 @@ object PermissionUtils {
      * Whether the user can actually see the ongoing-notification channel right now.
      *
      * This app targets SDK 32, and on Android 13+ POST_NOTIFICATIONS is granted automatically at install, so normally
-     * no runtime request is needed; but the user can later turn off all MiFreeform notifications in system settings (HyperOS also
-     * has a "smart control" that may turn them off on its own), at which point the ongoing notification and its "grant" button disappear together.
+     * no runtime request is needed; but the user can later turn off all MiFreeform notifications in system settings (some vendor ROMs also
+     * have a "smart control" that may turn them off on its own), at which point the ongoing notification and its "grant" button disappear together.
      * We only inform without navigating to system settings because that self-initiated navigation on Android 14 would hide overlay windows process-wide (see the note above),
      * whereas here we only read a local state and perform no navigation.
      */
@@ -82,7 +82,7 @@ object PermissionUtils {
      *
      * On Android 14 (API 34) and above we **never auto-navigate to the system settings page**, for the reasons below; below 34 the old one-tap shortcut is kept (see [openOverlayPermissionPage]).
      *
-     * Why we don't navigate (measured on HyperOS 14, diagnostics report §1.12): after going through a "window creation rejected" branch once,
+     * Why we don't navigate (measured on Android 14, diagnostics report §1.12): after going through a "window creation rejected" branch once,
      * the `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)` at the end of that branch sets all non-system overlay windows this process later creates
      * to `mForceHideNonSystemOverlayWindow=true`—freeforms, sidebar, and panel all vanish, re-granting does not clear it, and only restarting the process
      * or even the phone helps. Quantitative on real device: keeping this navigation poisoned 4/4; removing only this navigation (everything else unchanged) poisoned 0/4.

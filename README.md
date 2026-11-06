@@ -23,7 +23,7 @@ most apps as a freeform window, and supports Android 8.1 and above.
 > | --- | --- |
 > | Android 10 | ✅ working (AOSP API 29 emulator, 2026-11) |
 > | Android 12 | ✅ working (AOSP API 31 emulator, 2026-11) |
-> | Android 14 | ⚠️ **partially working** (tested on a HyperOS 14 phone and an AOSP 14 emulator): only the features in the verified list below work, everything else has **not been checked item by item** |
+> | Android 14 | ⚠️ **partially working** (tested on an Android 14 phone (Xiaomi MIX 2S, near-stock LineageOS) and an AOSP 14 emulator): only the features in the verified list below work, everything else has **not been checked item by item** |
 >
 > **One APK covers all three.** There is no per-version build and no product flavour: the same debug APK
 > (versionCode 2551 / 2.5.38) was installed on the API 29, API 31 and API 34 emulators and ran the same checks:
@@ -38,7 +38,7 @@ most apps as a freeform window, and supports Android 8.1 and above.
 >
 > **Verified working on Android 14** (2026-11, on a build of the current `main`): opening, closing and resizing
 > freeform windows, the top-bar close button, the back key, the sidebar handle, the sidebar app panel, and the
-> persistent-notification and QS-tile entries. Regression on the HyperOS 14 device: 3 window rounds, 2 handle
+> persistent-notification and QS-tile entries. Regression on the Android 14 phone (near-stock LineageOS): 3 window rounds, 2 handle
 > rounds, 3 panel rounds — the state described below was not reproduced once.
 >
 > **The one system-level Android 14 defect we confirmed** (fixed on `main` since commit `7629360`, 2026-11;
@@ -46,7 +46,7 @@ most apps as a freeform window, and supports Android 8.1 and above.
 > the sidebar handle and the sidebar
 > panel disappear
 > from the screen **at the same time**; the app is still alive, it just shows nothing. The cause is not the
-> hidden-API policy being tightened. On HyperOS 14, when a window is *attempted* while the overlay permission
+> hidden-API policy being tightened. On Android 14, when a window is *attempted* while the overlay permission
 > is not in effect, **the old build auto-opened the system "display over other apps" settings page from the
 > rejection branch** — and that single jump makes the system force-hide **every** overlay window that the
 > process creates afterwards (the accessibility window type included), and re-granting the permission does not
@@ -81,7 +81,7 @@ most apps as a freeform window, and supports Android 8.1 and above.
 >   `HookFramework.handleLoadPackage` stops at 33 and has no 34 branch. So Xposed-dependent options such as
 >   "stop apps from jumping out of the freeform window into fullscreen" are inert on 14 (unverified, because
 >   nothing gets hooked in the first place); the Shizuku / Sui equivalents are unaffected.
-> - No Android 14 device other than that HyperOS 14 phone (Xiaomi MIX 2S) and the AOSP 14 emulator has been tested.
+> - No Android 14 device other than that phone (Xiaomi MIX 2S, near-stock LineageOS) and the AOSP 14 emulator has been tested.
 > - Input method, clipboard and multi-display behaviour on 14 have **not been checked item by item**.
 >
 > The Android 14 adaptation now lives **on `main`** (commit `7629360`): the permission gate, the SDK-34 guard

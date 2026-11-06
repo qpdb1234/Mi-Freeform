@@ -8,7 +8,7 @@ If you use **foreground-service keep-alive**, and the page you opened is one of 
 screens — **system settings, an authorization screen, the second-space picker on some devices** and the
 like — this happens. Fix: switch to the accessibility keep-alive service.
 
-> **Android 14 note (measured 2026-10)**: on HyperOS 14 / Android 14 this has a well-defined mechanism;
+> **Android 14 note (measured 2026-10)**: on Android 14 this has a well-defined mechanism;
 > the recovery steps are item **8** below. Note that once the "never opens again" state is already there,
 > switching to accessibility keep-alive does **not** bring the windows back (the accessibility window type
 > is hidden as well) — recover with item 8 first. There its role is **prevention**, not cure.
@@ -46,7 +46,7 @@ setting.
 
 ## 8. Android 14 (older builds): the freeform, the handle and the panel all vanish at once, and re-granting does nothing
 
-This only appears on **Android 14 (measured on HyperOS V11.0.4.0, Xiaomi MIX 2S)** and only on **builds
+This only appears on **Android 14 (measured on a Xiaomi MIX 2S running near-stock LineageOS)** and only on **builds
 that still auto-jump to the system settings page from the rejection branch**. The code on `main` dropped
 that jump for Android 14+ starting with commit **`7629360`** (2026-11), but **the 2.5.38 installers
 released before that merge still belong to this class** — the item is kept here so people who hit it can
@@ -55,7 +55,7 @@ recognise it. The freeform window, the sidebar handle and the sidebar panel disa
 
 **Cause**: on those builds, when the overlay permission was not in effect and the user tapped to open a
 window, the rejection branch **auto-opened the system "display over other apps" settings page once**.
-That single jump is what HyperOS 14 records: every overlay window the process creates afterwards is
+That single jump is what Android 14 records: every overlay window the process creates afterwards is
 marked force-hidden. Measured on device: keeping the jump 4/4 poisoned, removing only the jump (everything
 else unchanged) 0/4. Querying the permission alone, or opening that page alone (with no rejected window
 attempt), does not trigger it. The marker is kept per process, so **re-granting the permission does not
@@ -93,7 +93,7 @@ for an Android 14 problem.
 > (2.5.38 / versionCode 2551) was checked on the API 29, API 31 and API 34 emulators for the sidebar handle
 > and panel, the freeform window (virtual display + activity) and touch injection — all fine. The behaviour
 > on a missing permission forks by version (10 / 12 jump to the permission page, 14 does not). Android 14 is
-> still listed as **partially working** (HyperOS 14 phone + AOSP 14 emulator): verified are opening, closing
+> still listed as **partially working** (Android 14 phone + AOSP 14 emulator): verified are opening, closing
 > and resizing freeform windows, the top-bar close button, the back key, the sidebar handle and panel, and
 > the notification and quick-settings-tile entries; **not yet adapted** is the Xposed route — the version
 > branch in `HookFramework` stops at 33 and installs no hook at all on 14, so Xposed-dependent options are

@@ -632,7 +632,7 @@ class FreeformView(
 
     private fun showWindow() {
         // First work out which window type this attempt is eligible for, then decide whether to call addView.
-        // Measured (HyperOS 14): calling addView without the overlay permission is recorded by the system as
+        // Measured (Android 14, near-stock LineageOS): calling addView without the overlay permission is recorded by the system as
         // a "rejected non-system overlay request", and then **all** non-system overlay windows created by this process afterward
         // get permanently set to mForceHideNonSystemOverlayWindow=true—re-granting doesn't clear it, only a process restart recovers.
         // The old code blindly tried TYPE_ACCESSIBILITY_OVERLAY first regardless, and without the accessibility service enabled here,
@@ -749,7 +749,7 @@ class FreeformView(
      *
      * Previously this also did `startActivity(ACTION_MANAGE_OVERLAY_PERMISSION)` to send the user to grant it,
      * and real-device experiments pinned that very jump as the cause: the real rejection branch poisoned all overlays in the process 4/4,
-     * while the jump-removed control was 0/4 (HyperOS 14, see [PermissionUtils.guideToGrantOverlayPermission] for rationale and data).
+     * while the jump-removed control was 0/4 (Android 14, see [PermissionUtils.guideToGrantOverlayPermission] for rationale and data).
      * So the notice has no automatic jump anymore; the grant entry became a "grant" button on the ongoing notification (user-initiated).
      */
     private fun requestOverlayPermissionUi(destroyFirst: Boolean) {

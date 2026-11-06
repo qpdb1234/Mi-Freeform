@@ -360,7 +360,7 @@ class ChooseAppFloatingView(
     private fun addFloatingWindow() {
         if (windowAttached) return
         // Decide before attaching: the panel uses the ordinary overlay window type (see the comment above); without permission **don't call addView once**.
-        // The old form blindly sent once and only checked permission after an exception, and that failed request on HyperOS 14 would
+        // The old form blindly sent once and only checked permission after an exception, and that failed request on Android 14 would
         // permanently hide all non-system overlay windows this process later creates (see PermissionUtils.pickOverlayWindowType).
         if (!Settings.canDrawOverlays(context)) {
             Log.w(TAG, "panel_start_rejected no_overlay_permission")
