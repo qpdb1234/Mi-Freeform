@@ -32,11 +32,23 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Locate Android SDK
+        run: |
+          for root in "$ANDROID_HOME" "$ANDROID_SDK_ROOT" /usr/local/lib/android/sdk; do
+            if [ -n "$root" ] && [ -d "$root" ]; then
+              echo "ANDROID_HOME=$root" >> "$GITHUB_ENV"
+              echo "ANDROID_SDK_ROOT=$root" >> "$GITHUB_ENV"
+              echo "Using Android SDK at $root"
+              break
+            fi
+          done
 
       - name: Install platform 32
-        run: sdkmanager --install "platforms;android-32" "build-tools;30.0.3"
+        run: |
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            --install "platforms;android-32" "build-tools;30.0.3"
 
       - name: Read version
         id: version
