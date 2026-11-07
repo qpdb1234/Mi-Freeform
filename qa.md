@@ -1,4 +1,4 @@
-# Mi-Freeform 2.5 FAQ (continuously updated)
+﻿# Mi-Freeform 2.5 FAQ (continuously updated)
 
 [**English**](qa.md) | [简体中文](qa_zh-Hans.md)
 
@@ -90,7 +90,7 @@ re-grant after that jump left **not a single** force-hidden overlay record — t
 for an Android 14 problem.
 
 > **One installer covers Android 10 / 12 / 14**, with no per-version build: the same debug APK
-> (2.5.38 / versionCode 2551) was checked on the API 29, API 31 and API 34 emulators for the sidebar handle
+> (2.5.39 / versionCode 2552) was checked on the API 29, API 31 and API 34 emulators for the sidebar handle
 > and panel, the freeform window (virtual display + activity) and touch injection — all fine. The behaviour
 > on a missing permission forks by version (10 / 12 jump to the permission page, 14 does not). Android 14 is
 > still listed as **partially working** (Android 14 phone + AOSP 14 emulator): verified are opening, closing

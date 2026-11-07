@@ -1,4 +1,4 @@
-# Mi-Freeform 米窗（2.5.38 维护分支）
+﻿# Mi-Freeform 米窗（2.5.39 维护分支）
 
 [English](README.md) | **简体中文**
 
@@ -24,7 +24,7 @@ Mi-Freeform（米窗）是一款通过 Shizuku / Sui 激活的 Android 第三方
 > | Android 14 | ⚠️ **部分正常**（Android 14 真机（小米 MIX 2S，类原生 LineageOS）+ AOSP 14 模拟器实测）：仅下面「已验证」清单内的功能可用，其余**未逐项验证** |
 >
 > **一个安装包同时覆盖这三个版本**。没有分版本构建，也没有 product flavour：同一个 debug 包
-> （versionCode 2551 / 2.5.38）分别装到 API 29、API 31、API 34 三台模拟器上跑了同一套检查：
+> （versionCode 2552 / 2.5.39）分别装到 API 29、API 31、API 34 三台模拟器上跑了同一套检查：
 >
 > | 检查项 | Android 10 | Android 12 | Android 14 |
 > | --- | --- | --- | --- |
@@ -70,9 +70,9 @@ Mi-Freeform（米窗）是一款通过 Shizuku / Sui 激活的 Android 第三方
 > - 输入法、剪贴板、多屏等专项在 14 上**未逐项验证**。
 > Android 14 的适配现在**就在 `main` 上**（commit `7629360`）：权限闸门、只在该跳转真正有害时才关掉
 > 的 SDK-34 守卫、常驻通知的「去授权」按钮、能报出「是哪个应用要求隐藏窗口」的看门狗，以及最近任务入口
-> 背后那个静态声明的接收器。**从该 commit 之后构建的包都带着这些**；在此之前的产物没有 —— `v2.5.38`
-> 这个 tag 落在本次合并的前一个 commit 上，所以从 Releases 下载的包可能版本号同样是 2.5.38 /
-> versionCode 2551，行为却仍是上面描述的老样子；拿不准时请从源码构建，或与那个 commit 比对。
+> 背后那个静态声明的接收器。**从该 commit 之后构建的包都带着这些**；在此之前的产物没有 ——
+> 若手里的包早于该 commit，版本号同样可能是 2.5.38 / versionCode 2551，行为却仍是上面描述的老样子；
+> 拿不准时请从源码构建，或与那个 commit 比对。
 
 当前支持：
 - 通过全局侧边栏把收藏应用以小窗打开
@@ -85,7 +85,7 @@ Mi-Freeform（米窗）是一款通过 Shizuku / Sui 激活的 Android 第三方
 
 ## 这个分支改了什么
 
-基线 2.5.18 → 当前 **2.5.38 / versionCode 2551**。主要改动按主题归类：
+基线 2.5.18 → 当前 **2.5.39 / versionCode 2552**。主要改动按主题归类：
 
 **标识与共存**
 - `applicationId` 改为 `com.mifreeform.freeform`，源码命名空间为 `com.moonlight.freeform`，因此**可以与官方版并存安装**、互不覆盖。
@@ -94,6 +94,12 @@ Mi-Freeform（米窗）是一款通过 Shizuku / Sui 激活的 Android 第三方
 **小窗行为**
 - **横屏 / 竖屏分别记忆尺寸**，并且每个应用的小窗各记各的；关闭小窗后该记忆立即清除（`FreeformView` 的 `userPortraitHeight` / `userLandscapeHeight`）。旋转往返不再改变大小。
 - 通知点击**立即**打开侧边栏，去掉原先的延迟。
+- **拖拽缩放可逐个把手配置**：底栏两个圆点与底部两个角落，各自可选*等比例*（宽始终由高推导）或*自由*
+  （宽、高各自跟随手指独立变化）——圆点默认自由、角落默认等比例。自由缩放会同步更新已存的宽高比为你
+  定下的形状，之后转屏不会再被拉回原比例。
+- **大窗口不再抖动**：拖动过程中的窗口尺寸提交限流到约 30fps（`commitWindowScaleThrottled`），不再每个
+  `ACTION_MOVE` 都重排一次悬浮窗——那种逐帧重排正是窗口被拉得很大后掉帧、肉眼可见抖动的原因。松手仍
+  精确提交最终尺寸，所以静止大小不受限流影响。
 - 触控映射与窗口几何从 `FreeformView` 中拆出为 `FreeformTouchMapper` / `FreeformWindowGeometry`，并配套单元测试。
 - 新增小窗截图（`ScreenshotHelper`）与迷你悬浮球（`MiniBallView`）。
 

@@ -1,4 +1,4 @@
-# Mi-Freeform (2.5.38 maintenance fork)
+﻿# Mi-Freeform (2.5.39 maintenance fork)
 
 **English** | [简体中文](README_zh-Hans.md)
 
@@ -26,7 +26,7 @@ most apps as a freeform window, and supports Android 8.1 and above.
 > | Android 14 | ⚠️ **partially working** (tested on an Android 14 phone (Xiaomi MIX 2S, near-stock LineageOS) and an AOSP 14 emulator): only the features in the verified list below work, everything else has **not been checked item by item** |
 >
 > **One APK covers all three.** There is no per-version build and no product flavour: the same debug APK
-> (versionCode 2551 / 2.5.38) was installed on the API 29, API 31 and API 34 emulators and ran the same checks:
+> (versionCode 2552 / 2.5.39) was installed on the API 29, API 31 and API 34 emulators and ran the same checks:
 >
 > | Check | Android 10 | Android 12 | Android 14 |
 > | --- | --- | --- | --- |
@@ -88,9 +88,9 @@ most apps as a freeform window, and supports Android 8.1 and above.
 > that turns the automatic jump off only where it actually poisons something, the "grant permission" action on
 > the persistent notification, the watchdog that names the app which asked the system to hide the windows, and
 > the statically declared receiver behind the Recents entry. Anything built from `main` after that commit has
-> all of it. **Artifacts built before it do not** — the `v2.5.38` tag sits on the commit that precedes this
-> merge, so a package downloaded from Releases can carry the same 2.5.38 / versionCode 2551 and still behave as
-> described above; when in doubt, build from source or compare against that commit.
+> all of it. **Artifacts built before it do not** — if your build predates that commit it can carry the same
+> 2.5.38 / versionCode 2551 and still behave as described above; when in doubt, build from source or compare
+> against that commit.
 
 Current support:
 - open favorited apps as a freeform window from the global sidebar
@@ -103,7 +103,7 @@ Current support:
 
 ## What this fork changes
 
-Baseline 2.5.18 → current **2.5.38 / versionCode 2551**. The main changes, grouped by theme:
+Baseline 2.5.18 → current **2.5.39 / versionCode 2552**. The main changes, grouped by theme:
 
 **Identity and coexistence**
 - `applicationId` is `com.mifreeform.freeform` while the source namespace stays `com.moonlight.freeform`, so
@@ -115,6 +115,14 @@ Baseline 2.5.18 → current **2.5.38 / versionCode 2551**. The main changes, gro
   memory is cleared as soon as the window is closed (`userPortraitHeight` / `userLandscapeHeight` in
   `FreeformView`). Rotating back and forth no longer changes the size.
 - Tapping a notification opens the sidebar **immediately**; the delay the original had is gone.
+- **Drag-to-scale is configurable per handle**: the two bottom-bar dots and the two bottom corners each choose
+  between *proportional* (width always derived from height) and *free* (width and height follow the finger
+  independently) — dots default to free, corners to proportional. A free resize also updates the stored
+  width/height ratio to the shape you set, so rotating the window afterwards keeps it instead of snapping back.
+- **No more jitter on large windows**: window-size commits during a drag are throttled to ~30fps
+  (`commitWindowScaleThrottled`), instead of re-laying out the overlay on every `ACTION_MOVE` — that per-move
+  relayout was what dropped frames and visibly shook the window once it was dragged very large. Release always
+  commits the exact final size, so the resting size is never quantized.
 - Touch mapping and window geometry were extracted out of `FreeformView` into `FreeformTouchMapper` /
   `FreeformWindowGeometry`, with unit tests alongside.
 - Added freeform screenshots (`ScreenshotHelper`) and a mini floating ball (`MiniBallView`).

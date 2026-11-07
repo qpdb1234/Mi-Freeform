@@ -45,8 +45,8 @@ android {
         targetSdk 32
         // versionCode must increase with features; otherwise, when it equals an already-installed version with the
         // same package name, the system treats it as "no update" and refuses an in-place install.
-        versionCode 2551
-        versionName "2.5.38"
+        versionCode 2552
+        versionName "2.5.39"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
